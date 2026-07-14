@@ -1,0 +1,81 @@
+// REFERENCE — paste into Firebase Console → Firestore → Rules → Publish.
+// Hardened: customers can't write orders/stock/analytics, can't escalate their
+// own role, and can't edit other users' reviews/wishlists. Order writes happen
+// server-side (Admin SDK) or via admin tooling.
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function isOwner(uid) { return signedIn() && request.auth.uid == uid; }
+    function isAdmin() {
+      return signedIn()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Public catalog (browsable while logged out)
+    match /products/{id} { allow read: if true; allow write: if isAdmin(); }
+
+    // Reviews: public read. CREATE is server-only (the /reviews/create function
+    // verifies the user actually purchased the product). Owners/admins may
+    // edit/delete their own.
+    match /reviews/{id} {
+      allow read:   if true;
+      allow create: if false;
+      allow update, delete: if isAdmin() || (signedIn() && resource.data.userId == request.auth.uid);
+    }
+
+    // User profiles: own doc or admin. Crucially, a user may NOT change their own
+    // role or status (prevents self-promotion to admin). New docs start as 'user'.
+    match /users/{uid} {
+      allow read:   if isOwner(uid) || isAdmin();
+      allow create: if isOwner(uid) && request.resource.data.role == 'user';
+      allow update: if isAdmin()
+        || (isOwner(uid)
+            && request.resource.data.role == resource.data.role
+            && request.resource.data.status == resource.data.status);
+      allow delete: if isAdmin();
+      match /{sub=**} { allow read, write: if isAdmin(); }
+    }
+
+    // Orders: a user reads only their OWN; admin reads all. Writes are server-side
+    // (Admin SDK) or admin tooling — never the customer directly.
+    match /orders/{id} {
+      allow read:  if isAdmin() || (signedIn() && resource.data.userId == request.auth.uid);
+      allow write: if isAdmin();
+    }
+
+    // Cart: your own only (server clears it via the Admin SDK on checkout)
+    match /carts/{uid} { allow read, write: if isOwner(uid) || isAdmin(); }
+
+    // Stock alerts (wishlist "Notify Me"): you create your own; admin reads.
+    match /stockAlerts/{id} {
+      allow read:   if isAdmin();
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+    }
+
+    // Wishlist: fully owner-scoped — you can only read/write your own entries.
+    // (All client reads now query by userId, so owner-scoped reads are safe.)
+    match /wishlists/{id} {
+      allow read:   if isAdmin() || (signedIn() && resource.data.userId == request.auth.uid);
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAdmin() || (signedIn() && resource.data.userId == request.auth.uid);
+    }
+
+    // Aggregates: written by the server / admin tooling, read by admin dashboards
+    match /customerStats/{id} { allow read, write: if isAdmin(); }
+    match /productStats/{id}  { allow read, write: if isAdmin(); }
+    match /inventoryLogs/{id} { allow read, write: if isAdmin(); }
+    match /analytics/{doc=**} { allow read, write: if isAdmin(); }
+
+    // Bulk-import dashboard data (admin only)
+    match /uploadSessions/{id}  { allow read, write: if isAdmin(); }
+    match /activityLog/{id}     { allow read, write: if isAdmin(); }
+    match /importAnalytics/{id} { allow read, write: if isAdmin(); }
+
+    // Server-only collections (written via the Admin SDK, which bypasses rules)
+    match /pendingOrders/{id} { allow read, write: if false; }
+    match /rateLimits/{id}    { allow read, write: if false; }
+  }
+}

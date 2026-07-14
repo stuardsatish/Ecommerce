@@ -1,0 +1,273 @@
+import React, { useState, useRef } from "react";
+import { useNavigate, Link } from "react-router-dom";
+import { toast } from "react-toastify";
+import { createUserWithEmailAndPassword, updateProfile, sendEmailVerification } from "firebase/auth";
+import { auth, fireDB } from "../../context/FirebaseConfig";
+import { doc, setDoc } from "firebase/firestore";
+import { startLoading, stopLoading } from "../../context/LoadingSlice";
+import { useDispatch, useSelector } from "react-redux";
+import gsap from "gsap";
+import { useGSAP } from "@gsap/react";
+import { Eye, EyeOff } from "lucide-react";
+
+const labelStyle = {
+  fontSize: "12px",
+  fontWeight: 500,
+  color: "#74777D",
+  textTransform: "uppercase",
+  letterSpacing: "0.6px",
+};
+
+const sectionLabelStyle = {
+  fontSize: "11px",
+  fontWeight: 700,
+  color: "#1B1C1C",
+  textTransform: "uppercase",
+  letterSpacing: "0.8px",
+};
+
+const SignupPage = () => {
+  const navigate = useNavigate();
+  const dispatch = useDispatch();
+  const containerRef = useRef(null);
+  const loading = useSelector((state) => state.loading.loading);
+
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [formData, setFormData] = useState({
+    name: "",
+    email: "",
+    password: "",
+    confirmPassword: "",
+    // Profile details (match the fields shown/edited in MyProfile)
+    phone: "",
+    gender: "",
+    dateOfBirth: "",
+    street: "",
+    city: "",
+    state: "",
+    pincode: "",
+  });
+  const [errors, setErrors] = useState({});
+
+  useGSAP(() => {
+    const tl = gsap.timeline({ defaults: { ease: "power3.out", duration: 0.7 } });
+    tl.from(".auth-card", { y: 30, opacity: 0 })
+      .from(".auth-head > *", { y: 16, opacity: 0, stagger: 0.08 }, "-=0.4")
+      .from(".auth-form > *", { y: 12, opacity: 0, stagger: 0.04 }, "-=0.4");
+  }, { scope: containerRef });
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  // Min 8 chars, at least one letter and one number.
+  const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/;
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData({ ...formData, [name]: value });
+    if (errors[name]) {
+      setErrors({ ...errors, [name]: "" });
+    }
+  };
+
+  const validateForm = () => {
+    let newErrors = {};
+    if (!formData.name.trim()) newErrors.name = "Full name is required";
+    if (!formData.email) newErrors.email = "Email is required";
+    else if (!emailRegex.test(formData.email)) newErrors.email = "Invalid email format";
+    if (!formData.password) newErrors.password = "Password is required";
+    else if (!passwordRegex.test(formData.password)) newErrors.password = "Min 8 characters, with at least one letter and one number";
+    if (!formData.confirmPassword) newErrors.confirmPassword = "Please confirm your password";
+    else if (formData.password !== formData.confirmPassword) newErrors.confirmPassword = "Passwords do not match";
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSignup = async (e) => {
+    e.preventDefault();
+    if (!validateForm()) {
+      toast.error("Please fix the highlighted fields");
+      return;
+    }
+
+    try {
+      dispatch(startLoading());
+      const userCredentials = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
+
+      // Keep Firebase Auth profile in sync with the display name
+      await updateProfile(userCredentials.user, { displayName: formData.name.trim() });
+
+      const userDetails = {
+        name: formData.name.trim(),
+        uid: userCredentials.user.uid,
+        email: userCredentials.user.email,
+        phone: formData.phone.trim(),
+        gender: formData.gender,
+        dateOfBirth: formData.dateOfBirth,
+        address: {
+          street: formData.street.trim(),
+          city: formData.city.trim(),
+          state: formData.state.trim(),
+          pincode: formData.pincode.trim(),
+        },
+        role: "user",
+        status: "active",
+        createdAt: new Date(),
+        totalOrders: 0,
+        totalSpent: 0,
+        lastOrderDate: new Date(),
+      };
+
+      await setDoc(doc(fireDB, "users", userCredentials.user.uid), userDetails);
+
+      // Send a verification email — required before checkout (enforced server-side).
+      try {
+        await sendEmailVerification(userCredentials.user);
+      } catch (e) {
+        console.log("Could not send verification email:", e);
+      }
+
+      toast.success("Account created 🎉 Check your inbox to verify your email before checking out.");
+      navigate("/login");
+    } catch (error) {
+      console.error("Signup Error:", error);
+      toast.error(error.message || "Signup failed");
+    } finally {
+      dispatch(stopLoading());
+    }
+  };
+
+  const fieldError = (key) =>
+    errors[key] ? <span style={{ fontSize: "12px", fontWeight: 500, color: "#BA1A1A" }}>{errors[key]}</span> : null;
+
+  return (
+    <div
+      ref={containerRef}
+      className="min-h-screen flex items-start justify-center pt-24 md:pt-10 px-6 pb-10"
+      style={{ background: "#FBF9F8", fontFamily: "Inter, sans-serif" }}
+    >
+      <style>{`
+        .auth-input{width:100%;background:#F6F3F2;border:1px solid transparent;border-radius:12px;padding:12px 14px;font-size:14px;color:#1B1C1C;font-family:'Inter',sans-serif;outline:none;transition:border-color .15s,background .15s;}
+        .auth-input:focus{border-color:#1B1C1C;background:#FFFFFF;}
+        .auth-input::placeholder{color:#74777D;}
+        @keyframes authSpin{to{transform:rotate(360deg);}}
+        .auth-spinner{width:16px;height:16px;border:2px solid rgba(255,255,255,0.4);border-top-color:#fff;border-radius:9999px;animation:authSpin .7s linear infinite;}
+      `}</style>
+
+      <div
+        className="auth-card w-full"
+        style={{ maxWidth: "520px", background: "#FFFFFF", borderRadius: "16px", padding: "32px", boxShadow: "0px 4px 20px rgba(26,43,60,0.05)", border: "1px solid rgba(228,226,225,0.3)" }}
+      >
+        <div className="auth-head" style={{ marginBottom: "24px" }}>
+          <h1 style={{ fontSize: "26px", fontWeight: 700, color: "#1B1C1C", letterSpacing: "-0.4px" }}>Create account</h1>
+          <p style={{ fontSize: "14px", color: "#74777D", marginTop: "6px" }}>Set up your profile to get started</p>
+        </div>
+
+        <form onSubmit={handleSignup} className="auth-form flex flex-col" style={{ gap: "16px" }}>
+          {/* ── Account ── */}
+          <span style={sectionLabelStyle}>Account</span>
+
+          <label className="flex flex-col" style={{ gap: "6px" }}>
+            <span style={labelStyle}>Full Name</span>
+            <input className="auth-input" type="text" name="name" placeholder="Your full name" value={formData.name} onChange={handleChange} />
+            {fieldError("name")}
+          </label>
+
+          <label className="flex flex-col" style={{ gap: "6px" }}>
+            <span style={labelStyle}>Email</span>
+            <input className="auth-input" type="email" name="email" placeholder="you@example.com" value={formData.email} onChange={handleChange} />
+            {fieldError("email")}
+          </label>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: "12px" }}>
+            <label className="flex flex-col" style={{ gap: "6px" }}>
+              <span style={labelStyle}>Password</span>
+              <div className="relative">
+                <input className="auth-input" style={{ paddingRight: "44px" }} type={showPassword ? "text" : "password"} name="password" placeholder="Min 6 characters" value={formData.password} onChange={handleChange} />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} aria-label="Toggle password" className="absolute flex items-center justify-center" style={{ right: "12px", top: "50%", transform: "translateY(-50%)", color: "#74777D" }}>
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+              {fieldError("password")}
+            </label>
+
+            <label className="flex flex-col" style={{ gap: "6px" }}>
+              <span style={labelStyle}>Confirm Password</span>
+              <div className="relative">
+                <input className="auth-input" style={{ paddingRight: "44px" }} type={showConfirmPassword ? "text" : "password"} name="confirmPassword" placeholder="Re-enter password" value={formData.confirmPassword} onChange={handleChange} />
+                <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} aria-label="Toggle confirm password" className="absolute flex items-center justify-center" style={{ right: "12px", top: "50%", transform: "translateY(-50%)", color: "#74777D" }}>
+                  {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+              {fieldError("confirmPassword")}
+            </label>
+          </div>
+
+          {/* ── Personal details ── */}
+          <span style={{ ...sectionLabelStyle, marginTop: "8px" }}>Personal Details <span style={{ color: "#74777D", fontWeight: 500, textTransform: "none", letterSpacing: 0 }}>(optional)</span></span>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: "12px" }}>
+            <label className="flex flex-col" style={{ gap: "6px" }}>
+              <span style={labelStyle}>Phone</span>
+              <input className="auth-input" type="tel" name="phone" placeholder="Phone number" value={formData.phone} onChange={handleChange} />
+            </label>
+            <label className="flex flex-col" style={{ gap: "6px" }}>
+              <span style={labelStyle}>Gender</span>
+              <select className="auth-input" name="gender" value={formData.gender} onChange={handleChange}>
+                <option value="">Select…</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Prefer not to say">Prefer not to say</option>
+              </select>
+            </label>
+          </div>
+
+          <label className="flex flex-col" style={{ gap: "6px" }}>
+            <span style={labelStyle}>Date of Birth</span>
+            <input className="auth-input" type="date" name="dateOfBirth" value={formData.dateOfBirth} onChange={handleChange} />
+          </label>
+
+          {/* ── Delivery address ── */}
+          <span style={{ ...sectionLabelStyle, marginTop: "8px" }}>Delivery Address <span style={{ color: "#74777D", fontWeight: 500, textTransform: "none", letterSpacing: 0 }}>(optional)</span></span>
+
+          <label className="flex flex-col" style={{ gap: "6px" }}>
+            <span style={labelStyle}>Street</span>
+            <input className="auth-input" type="text" name="street" placeholder="Street address" value={formData.street} onChange={handleChange} />
+          </label>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: "12px" }}>
+            <label className="flex flex-col" style={{ gap: "6px" }}>
+              <span style={labelStyle}>City</span>
+              <input className="auth-input" type="text" name="city" placeholder="City" value={formData.city} onChange={handleChange} />
+            </label>
+            <label className="flex flex-col" style={{ gap: "6px" }}>
+              <span style={labelStyle}>State</span>
+              <input className="auth-input" type="text" name="state" placeholder="State" value={formData.state} onChange={handleChange} />
+            </label>
+          </div>
+
+          <label className="flex flex-col" style={{ gap: "6px" }}>
+            <span style={labelStyle}>Pincode</span>
+            <input className="auth-input" type="text" name="pincode" placeholder="Pincode" value={formData.pincode} onChange={handleChange} />
+          </label>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="flex items-center justify-center"
+            style={{ width: "100%", background: "#A43B31", color: "#fff", fontWeight: 700, fontSize: "15px", padding: "13px", borderRadius: "9999px", boxShadow: "0px 4px 6px -4px rgba(164,59,49,0.2)", marginTop: "8px", gap: "8px", opacity: loading ? 0.85 : 1 }}
+          >
+            {loading ? <span className="auth-spinner" /> : "Create Account"}
+          </button>
+        </form>
+
+        <p style={{ fontSize: "14px", color: "#74777D", textAlign: "center", marginTop: "24px" }}>
+          Already have an account?{" "}
+          <Link to="/login" style={{ color: "#A43B31", fontWeight: 700 }}>Sign in</Link>
+        </p>
+      </div>
+    </div>
+  );
+};
+
+export default SignupPage;

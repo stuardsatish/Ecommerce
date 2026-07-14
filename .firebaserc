@@ -1,0 +1,14 @@
+{
+  "projects": {
+    "default": "my-sweet-bec4a"
+  },
+  "targets": {
+    "my-sweet-bec4a": {
+      "hosting": {
+        "e-commerce-site": [
+          "e-commerce-demo-website1"
+        ]
+      }
+    }
+  }
+}
