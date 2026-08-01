@@ -12,9 +12,11 @@ service cloud.firestore {
     // Public catalog (browsable while logged out)
     match /products/{id} { allow read: if true; allow write: if isAdmin(); }
 
-    // Promo codes / coupons: anyone can read (to validate on cart check-out); only admin can create/update/delete.
+    // Promo codes / coupons: NOT publicly readable (would let anyone enumerate
+    // every code + value). Customers validate a code via the server endpoint
+    // POST /api/promo/validate; only admins may list/read/write directly.
     match /promoCodes/{id} {
-      allow read: if true;
+      allow read:  if isAdmin();
       allow write: if isAdmin();
     }
 
@@ -31,7 +33,21 @@ service cloud.firestore {
     // role or status (prevents self-promotion to admin). New docs start as 'user'.
     match /users/{uid} {
       allow read:   if isOwner(uid) || isAdmin();
-      allow create: if isOwner(uid) && request.resource.data.role == 'user';
+      // Self-signup: lock role/status to safe defaults AND whitelist the fields
+      // a client may set, so a crafted write can't seed privileged/analytics
+      // fields (mass-assignment). Admin tooling (isAdmin) is exempt.
+      allow create: if isAdmin() || (
+        isOwner(uid)
+        && request.resource.data.role == 'user'
+        && request.resource.data.status == 'active'
+        && request.resource.data.keys().hasOnly([
+             'name','uid','email','phone','gender','dateOfBirth','address',
+             'role','status','createdAt','totalOrders','totalSpent','lastOrderDate',
+             'photoURL','lastLoginAt','lastLoginDevice','lastLoginIP','activeSessionId'
+           ])
+        && request.resource.data.totalOrders == 0
+        && request.resource.data.totalSpent == 0
+      );
       allow update: if isAdmin()
         || (isOwner(uid)
             && request.resource.data.role == resource.data.role

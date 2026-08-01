@@ -8,7 +8,6 @@ const productSlice = createSlice({
   },
 
   reducers: {
-
     // ADD PRODUCTS (API DATA)
     addProduct: (state, action) => {
       state.product = action.payload;
@@ -17,7 +16,7 @@ const productSlice = createSlice({
     // REMOVE SINGLE PRODUCT
     removeProduct: (state, action) => {
       state.product = state.product.filter(
-        (product) => product.id !== action.payload
+        (product) => product.id !== action.payload,
       );
     },
 
@@ -25,14 +24,10 @@ const productSlice = createSlice({
     removeAllProduct: (state) => {
       state.product = [];
     },
-
   },
 });
 
-export const {
-  addProduct,
-  removeProduct,
-  removeAllProduct,
-} = productSlice.actions;
+export const { addProduct, removeProduct, removeAllProduct } =
+  productSlice.actions;
 
 export default productSlice.reducer;

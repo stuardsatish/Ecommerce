@@ -1,39 +1,69 @@
 import Skeleton from "../../components/Common/Skeleton";
 
+/**
+ * Mobile order-card skeleton — mirrors the compact card rendered in the
+ * <lg order lists (/userorders, /userpastorders): a rounded-12 surface card
+ * with a header row (order id on the left, price + status pill on the right)
+ * over a couple of product rows (44×44 thumb + title/qty lines).
+ *
+ * Desktop order lists use their own inline skeleton (see UserOrdersPage /
+ * UserPastOrdersPage), so this component only needs to track the mobile card.
+ */
 const OrderCardSkeleton = () => {
   return (
-    <div className="order-card bg-white rounded-[2rem] p-6 lg:p-8 border border-neutral-100 shadow-[0_15px_30px_-10px_rgba(0,0,0,0.03)] mb-6">
-      {/* Header Skeleton */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 border-b border-neutral-50 pb-6">
-        <div>
-          <Skeleton className="h-3 w-20 mb-2" />
-          <Skeleton className="h-6 w-32" />
+    <div
+      className="bg-surface"
+      style={{
+        borderRadius: "12px",
+        padding: "16px",
+        boxShadow: "0px 4px 20px rgba(26,43,60,0.05)",
+      }}
+      aria-hidden="true"
+    >
+            {/* Header row: order id (left) + price & status pill (right) */}   
+       {" "}
+      <div
+        className="flex items-center justify-between"
+        style={{
+          borderBottom: "1px solid var(--color-surface-muted)",
+          paddingBottom: "12px",
+          marginBottom: "12px",
+          gap: "8px",
+        }}
+      >
+               {" "}
+        <div className="flex flex-col" style={{ gap: "6px" }}>
+                    <Skeleton className="h-2.5 w-10" />
+                    <Skeleton className="h-3.5 w-24" />       {" "}
         </div>
-       
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="flex flex-col md:items-end">
-            <Skeleton className="h-3 w-12 mb-2" />
-            <Skeleton className="h-6 w-24" />
-          </div>
-          <Skeleton className="h-10 w-28 rounded-full" />
+               {" "}
+        <div
+          className="flex items-center flex-shrink-0"
+          style={{ gap: "10px" }}
+        >
+                    <Skeleton className="h-4 w-14" />
+                    <Skeleton className="h-5 w-20 rounded-full" />       {" "}
         </div>
+             {" "}
       </div>
-
-      {/* Items Skeleton */}
-      <div className="space-y-4">
+            {/* Product rows */}     {" "}
+      <div className="flex flex-col" style={{ gap: "10px" }}>
+               {" "}
         {[...Array(2)].map((_, i) => (
-          <div key={i} className="flex items-center justify-between p-4 rounded-2xl bg-neutral-50 border border-neutral-100/50">
-            <div className="flex items-center gap-4">
-              <Skeleton className="w-12 h-12 rounded-xl" />
-              <div>
-                <Skeleton className="h-4 w-40 mb-2" />
-                <Skeleton className="h-3 w-16" />
-              </div>
+          <div key={i} className="flex items-center" style={{ gap: "10px" }}>
+                       {" "}
+            <Skeleton className="w-11 h-11 rounded-lg flex-shrink-0" />         
+             {" "}
+            <div className="flex flex-col" style={{ gap: "6px", flex: 1 }}>
+                            <Skeleton className="h-3.5 w-1/2" />
+                            <Skeleton className="h-2.5 w-1/4" />           {" "}
             </div>
-            {/* Conditional button skeleton for past orders could go here, but general skeleton is fine */}
+                     {" "}
           </div>
         ))}
+             {" "}
       </div>
+         {" "}
     </div>
   );
 };

@@ -14,6 +14,7 @@ export const getPaymentSettings = async () => {
   return {
     whatsappPayment: true,
     razorpayPayment: true,
+    codPayment: true,
   };
 };
 
@@ -22,11 +23,16 @@ export const getPaymentSettings = async () => {
  */
 export const savePaymentSettings = async (settings) => {
   const docRef = doc(fireDB, "settings", "paymentSettings");
-  await setDoc(docRef, {
-    whatsappPayment: !!settings.whatsappPayment,
-    razorpayPayment: !!settings.razorpayPayment,
-    updatedAt: serverTimestamp(),
-  }, { merge: true });
+  await setDoc(
+    docRef,
+    {
+      whatsappPayment: !!settings.whatsappPayment,
+      razorpayPayment: !!settings.razorpayPayment,
+      codPayment: !!settings.codPayment,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
 };
 
 /**
@@ -45,6 +51,7 @@ export const getInvoiceSettings = async () => {
     mobile: "+91 80 4000 1234",
     email: "support@nexuscommerce.in",
     gstin: "29ABCDE1234F1Z5",
+    state: "",
     website: "https://nexuscommerce.in",
     footerTitle: "Thank You!",
     footerSubNote: "We appreciate your business. Visit Again.",
@@ -60,21 +67,26 @@ export const getInvoiceSettings = async () => {
  */
 export const saveInvoiceSettings = async (settings) => {
   const docRef = doc(fireDB, "settings", "invoiceSettings");
-  await setDoc(docRef, {
-    companyName: (settings.companyName || "").trim(),
-    address: (settings.address || "").trim(),
-    mobile: (settings.mobile || "").trim(),
-    email: (settings.email || "").trim(),
-    gstin: (settings.gstin || "").trim(),
-    website: (settings.website || "").trim(),
-    footerTitle: (settings.footerTitle || "Thank You!").trim(),
-    footerSubNote: (settings.footerSubNote || "").trim(),
-    supportEmail: (settings.supportEmail || "").trim(),
-    supportPhone: (settings.supportPhone || "").trim(),
-    upiId: (settings.upiId || "").trim(),
-    logo: (settings.logo || "").trim(),
-    updatedAt: serverTimestamp(),
-  }, { merge: true });
+  await setDoc(
+    docRef,
+    {
+      companyName: (settings.companyName || "").trim(),
+      address: (settings.address || "").trim(),
+      mobile: (settings.mobile || "").trim(),
+      email: (settings.email || "").trim(),
+      gstin: (settings.gstin || "").trim(),
+      state: (settings.state || "").trim(),
+      website: (settings.website || "").trim(),
+      footerTitle: (settings.footerTitle || "Thank You!").trim(),
+      footerSubNote: (settings.footerSubNote || "").trim(),
+      supportEmail: (settings.supportEmail || "").trim(),
+      supportPhone: (settings.supportPhone || "").trim(),
+      upiId: (settings.upiId || "").trim(),
+      logo: (settings.logo || "").trim(),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
 };
 
 /**
@@ -98,9 +110,13 @@ export const getShippingSettings = async () => {
  */
 export const saveShippingSettings = async (settings) => {
   const docRef = doc(fireDB, "settings", "shippingSettings");
-  await setDoc(docRef, {
-    freeShippingThreshold: Number(settings.freeShippingThreshold) || 500,
-    shippingCost: Number(settings.shippingCost) || 49,
-    updatedAt: serverTimestamp(),
-  }, { merge: true });
+  await setDoc(
+    docRef,
+    {
+      freeShippingThreshold: Number(settings.freeShippingThreshold) || 500,
+      shippingCost: Number(settings.shippingCost) || 49,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
 };

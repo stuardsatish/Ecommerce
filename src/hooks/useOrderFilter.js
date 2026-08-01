@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react"
+import { useState, useMemo, useEffect } from "react";
 
 /**
  * Filter + paginate a list of orders. Search is supplied externally (shared
@@ -19,11 +19,15 @@ import { useState, useMemo, useEffect } from "react"
  *   search: string
  * }}
  */
-export default function useOrderFilter(orders, search = "", initialPageSize = 10) {
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(initialPageSize)
+export default function useOrderFilter(
+  orders,
+  search = "",
+  initialPageSize = 10,
+) {
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(initialPageSize);
 
-  const q = (search || "").trim().toLowerCase()
+  const q = (search || "").trim().toLowerCase();
 
   const filteredOrders = useMemo(
     () =>
@@ -32,23 +36,36 @@ export default function useOrderFilter(orders, search = "", initialPageSize = 10
           !q ||
           o.id?.toLowerCase().includes(q) ||
           o.orderId?.toLowerCase().includes(q) ||
-          o.userName?.toLowerCase().includes(q)
+          o.userName?.toLowerCase().includes(q),
       ),
-    [orders, q]
-  )
+    [orders, q],
+  );
 
-  const total = filteredOrders.length
-  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+  const total = filteredOrders.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   // Reset to page 1 whenever the search term or page size changes.
-  useEffect(() => { setPage(1) }, [q, pageSize])
+  useEffect(() => {
+    setPage(1);
+  }, [q, pageSize]);
   // Clamp page if the data shrinks below the current page.
-  useEffect(() => { if (page > totalPages) setPage(totalPages) }, [page, totalPages])
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
 
   const pagedOrders = useMemo(
     () => filteredOrders.slice((page - 1) * pageSize, page * pageSize),
-    [filteredOrders, page, pageSize]
-  )
+    [filteredOrders, page, pageSize],
+  );
 
-  return { filteredOrders, pagedOrders, total, page, setPage, pageSize, setPageSize, search }
+  return {
+    filteredOrders,
+    pagedOrders,
+    total,
+    page,
+    setPage,
+    pageSize,
+    setPageSize,
+    search,
+  };
 }

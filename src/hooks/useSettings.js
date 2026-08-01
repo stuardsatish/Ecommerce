@@ -13,6 +13,7 @@ export const useSettings = () => {
   const [paymentSettings, setPaymentSettings] = useState({
     whatsappPayment: true,
     razorpayPayment: true,
+    codPayment: true,
   });
   const [invoiceSettings, setInvoiceSettings] = useState({
     companyName: "",
@@ -20,6 +21,7 @@ export const useSettings = () => {
     mobile: "",
     email: "",
     gstin: "",
+    state: "",
     website: "",
     footerTitle: "Thank You!",
     footerSubNote: "",

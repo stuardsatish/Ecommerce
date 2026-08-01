@@ -1,74 +1,85 @@
-import { useEffect, useRef } from "react"
-import { useDispatch, useSelector } from "react-redux"
-import { signOut } from "firebase/auth"
-import { auth } from "../context/FirebaseConfig"
-import { clearUser } from "../context/UserSlice"
-import { clearCart } from "../context/CartSlice"
-import { getChannel, setSession, clearSession, broadcastAuth } from "../utils/sessionUtils"
+import { useEffect, useRef } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import { signOut } from "firebase/auth";
+import { auth } from "../context/FirebaseConfig";
+import { clearUser } from "../context/UserSlice";
+import { clearCart } from "../context/CartSlice";
+import {
+  getChannel,
+  setSession,
+  clearSession,
+  broadcastAuth,
+} from "../utils/sessionUtils";
 
 /**
  * Headless component (renders nothing) that keeps auth state consistent across
  * tabs:
- *  - mirrors the Redux user into this tab's sessionStorage,
- *  - logs this tab out when any other tab broadcasts "logout",
- *  - answers "who" probes so a new tab can detect an existing session and
- *    block a conflicting second login.
+ *  - mirrors the Redux user into this tab's sessionStorage,
+ *  - logs this tab out when any other tab broadcasts "logout",
+ *  - answers "who" probes so a new tab can detect an existing session and
+ *    block a conflicting second login.
  *
  * Mount once, inside the Router/Provider tree (e.g. in App.jsx).
  */
 export default function SessionManager() {
-  const dispatch = useDispatch()
-  const user = useSelector((s) => s.user.user)
-  const userRef = useRef(user)
+  const dispatch = useDispatch();
+  const user = useSelector((s) => s.user.user);
+  const userRef = useRef(user); // Mirror Redux auth into sessionStorage (per-tab) whenever it changes.
 
-  // Mirror Redux auth into sessionStorage (per-tab) whenever it changes.
   useEffect(() => {
-    userRef.current = user
+    userRef.current = user;
     if (user) {
-      setSession({ token: user.uid, role: user.role, userId: user.uid, userName: user.name, email: user.email })
+      setSession({
+        token: user.uid,
+        role: user.role,
+        userId: user.uid,
+        userName: user.name,
+        email: user.email,
+      });
     } else {
-      clearSession()
+      clearSession();
     }
-  }, [user])
+  }, [user]); // Cross-tab BroadcastChannel listener for auth events.
 
-  // Cross-tab BroadcastChannel listener for auth events.
   useEffect(() => {
-    const ch = getChannel()
-    if (!ch) return
+    const ch = getChannel();
+    if (!ch) return;
     const onMsg = (e) => {
-      const { type } = e.data || {}
+      const { type } = e.data || {};
       if (type === "logout") {
         // Another tab logged out → tear down here too.
-        clearSession()
-        dispatch(clearUser())
-        signOut(auth).catch(() => {})
+        clearSession();
+        dispatch(clearUser());
+        signOut(auth).catch(() => {});
       } else if (type === "who") {
         // A new tab is probing for an existing session — answer if authenticated.
         if (userRef.current) {
-          broadcastAuth("present", { role: userRef.current.role, userName: userRef.current.name })
+          broadcastAuth("present", {
+            role: userRef.current.role,
+            userName: userRef.current.name,
+          });
         }
       }
-    }
-    ch.addEventListener("message", onMsg)
-    return () => ch.removeEventListener("message", onMsg)
-  }, [dispatch])
-
-  // Cross-tab cart clearance listener via localStorage storage event.
+    };
+    ch.addEventListener("message", onMsg);
+    return () => ch.removeEventListener("message", onMsg);
+  }, [dispatch]); // Cross-tab cart clearance listener via localStorage storage event.
   // NOTE: The storage event only fires in OTHER tabs/windows, not the one
   // that set the item. The primary real-time sync now uses Firestore onSnapshot
   // in App.jsx, so this is a belt-and-suspenders fallback for cross-tab reloads.
+
   useEffect(() => {
     const handleStorageChange = (e) => {
       if (e.key === "cart-clear-trigger") {
-        dispatch(clearCart())
+        dispatch(clearCart());
         if (window.location.pathname.includes("/cart")) {
-          window.location.reload()
+          window.location.reload();
         }
       }
-    }
-    window.addEventListener("storage", handleStorageChange)
-    return () => window.removeEventListener("storage", handleStorageChange)
-  }, [dispatch])
+    };
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
+  }, [dispatch]);
 
-  return null
+  return null;
 }

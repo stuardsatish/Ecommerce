@@ -13,6 +13,10 @@ import {
   arrayRemove,
 } from "firebase/firestore";
 import { fireDB, storage } from "../../context/FirebaseConfig";
+import {
+  validateImageFile,
+  validateImageFiles,
+} from "../../utils/uploadValidation";
 
 import {
   ref,
@@ -32,6 +36,8 @@ const EditProductPage = () => {
     discountExpiry: "",
     stock: "",
     category: "",
+    gstRate: "0",
+    hsnCode: "",
     thumbnail: "",
     gallery: [],
     productId: "", // For storage folder
@@ -40,6 +46,7 @@ const EditProductPage = () => {
   const [thumbFile, setThumbFile] = useState(null);
   const [galleryFiles, setGalleryFiles] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [fetching, setFetching] = useState(true);
   const [uploadProgress, setUploadProgress] = useState(0); // Fetch product
 
   const getProduct = async () => {
@@ -54,12 +61,16 @@ const EditProductPage = () => {
         gallery: data.gallery || [],
         productId: data.productId || id, // fallback to doc id
         discountExpiry: data.discountExpiry || "",
+        gstRate: data.gstRate != null ? String(data.gstRate) : "0",
+        hsnCode: data.hsnCode || "",
       });
     }
   };
 
   useEffect(() => {
-    getProduct();
+    getProduct()
+      .catch((e) => console.error(e))
+      .finally(() => setFetching(false));
   }, []); // Handle input change
 
   const handleChange = (e) => {
@@ -73,11 +84,25 @@ const EditProductPage = () => {
 
   const handleThumbChange = (e) => {
     const file = e.target.files[0];
-    if (file) setThumbFile(file);
+    if (!file) return;
+    const v = validateImageFile(file);
+    if (!v.ok) {
+      alert(v.error);
+      e.target.value = "";
+      return;
+    }
+    setThumbFile(file);
   }; // Handle Gallery Change (Adding new images)
 
   const handleGalleryChange = (e) => {
-    setGalleryFiles([...e.target.files]);
+    const files = [...e.target.files];
+    const v = validateImageFiles(files);
+    if (!v.ok) {
+      alert(v.error);
+      e.target.value = "";
+      return;
+    }
+    setGalleryFiles(files);
   }; // Remove individual image from gallery
 
   const removeGalleryImage = async (imageUrl) => {
@@ -154,12 +179,14 @@ const EditProductPage = () => {
         discountExpiry: product.discountExpiry || "",
         stock: Math.max(0, Number(product.stock) || 0),
         category: product.category,
+        gstRate: Number(product.gstRate) || 0,
+        hsnCode: product.hsnCode || "",
+        priceType: "inclusive",
         description: product.description || "",
         thumbnail: newThumbnail,
         gallery: arrayUnion(...newGalleryUrls),
-      });
+      }); // Update the same product in every user's cart
 
-      // Update the same product in every user's cart
       const cartsSnapshot = await getDocs(collection(fireDB, "carts"));
 
       for (const cartDoc of cartsSnapshot.docs) {
@@ -205,28 +232,121 @@ const EditProductPage = () => {
     }
   };
 
+  if (fetching) {
+    const bar = (style) => (
+      <div
+        aria-hidden="true"
+        className="animate-pulse"
+        style={{
+          background: "var(--color-surface-muted)",
+          borderRadius: "6px",
+          ...style,
+        }}
+      />
+    );
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          background: "var(--color-surface-muted)",
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          padding: "40px",
+        }}
+        aria-busy="true"
+      >
+               {" "}
+        <div
+          style={{
+            width: "600px",
+            maxWidth: "100%",
+            background: "var(--color-surface)",
+            padding: "35px",
+            borderRadius: "12px",
+            boxShadow: "0 10px 30px rgba(0,0,0,0.1)",
+          }}
+        >
+                   {" "}
+          {bar({ width: "180px", height: "28px", marginBottom: "25px" })}       
+            {/* Thumbnail */}         {" "}
+          <div style={{ marginBottom: "20px" }}>
+                       {" "}
+            {bar({ width: "120px", height: "14px", marginBottom: "8px" })}     
+                 {" "}
+            <div style={{ display: "flex", alignItems: "center", gap: "15px" }}>
+                           {" "}
+              {bar({ width: "80px", height: "80px", borderRadius: "8px" })}     
+                      {bar({ height: "36px", flex: 1, borderRadius: "8px" })}   
+                     {" "}
+            </div>
+                     {" "}
+          </div>
+                    {/* Gallery */}         {" "}
+          <div style={{ marginBottom: "20px" }}>
+                       {" "}
+            {bar({ width: "120px", height: "14px", marginBottom: "8px" })}     
+                 {" "}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
+                           {" "}
+              {[...Array(4)].map((_, i) => (
+                <div key={i}>
+                  {bar({ width: "70px", height: "70px", borderRadius: "6px" })}
+                </div>
+              ))}
+                         {" "}
+            </div>
+                     {" "}
+          </div>
+                    {/* Fields */}         {" "}
+          <div
+            style={{ display: "flex", flexDirection: "column", gap: "16px" }}
+          >
+                       {" "}
+            {[...Array(6)].map((_, i) => (
+              <div key={i}>
+                {bar({ width: "90px", height: "13px", marginBottom: "6px" })}
+                {bar({ width: "100%", height: "42px", borderRadius: "8px" })}
+              </div>
+            ))}
+                     {" "}
+          </div>
+                   {" "}
+          {bar({
+            width: "100%",
+            height: "46px",
+            borderRadius: "8px",
+            marginTop: "24px",
+          })}
+                 {" "}
+        </div>
+             {" "}
+      </div>
+    );
+  }
+
   return (
     <div
       style={{
         minHeight: "100vh",
-        background: "#f5f7fb",
+        background: "var(--color-surface-muted)",
         display: "flex",
         justifyContent: "center",
         alignItems: "center",
         padding: "40px",
       }}
     >
-           {" "}
+                       {" "}
       <div
         style={{
           width: "600px",
-          background: "#fff",
+          background: "var(--color-surface)",
           padding: "35px",
           borderRadius: "12px",
           boxShadow: "0 10px 30px rgba(0,0,0,0.1)",
         }}
       >
-               {" "}
+                               {" "}
         <h2
           style={{
             marginBottom: "25px",
@@ -234,19 +354,19 @@ const EditProductPage = () => {
             fontSize: "24px",
           }}
         >
-                    Edit Product        {" "}
+                              Edit Product                {" "}
         </h2>
-                {/* Thumbnail Preview & Change */}       {" "}
+                        {/* Thumbnail Preview & Change */}               {" "}
         <div style={{ marginBottom: "20px" }}>
-                     {" "}
+                                         {" "}
           <label
             style={{ fontWeight: "500", display: "block", marginBottom: "8px" }}
           >
-            Main Thumbnail
+                        Main Thumbnail          {" "}
           </label>
-                     {" "}
+                                         {" "}
           <div style={{ display: "flex", alignItems: "center", gap: "15px" }}>
-                           {" "}
+                                                   {" "}
             {product.thumbnail && (
               <img
                 src={product.thumbnail}
@@ -256,30 +376,30 @@ const EditProductPage = () => {
                   height: "80px",
                   objectFit: "cover",
                   borderRadius: "8px",
-                  border: "1px solid #ddd",
+                  border: "1px solid var(--color-border)",
                 }}
               />
             )}
-                           {" "}
+                                                   {" "}
             <input
               type="file"
               accept="image/*"
               onChange={handleThumbChange}
               style={{ flex: 1 }}
             />
-                       {" "}
+                                             {" "}
           </div>
-                 {" "}
+                                   {" "}
         </div>
-                {/* Gallery Preview & Management */}       {" "}
+                        {/* Gallery Preview & Management */}               {" "}
         <div style={{ marginBottom: "20px" }}>
-                     {" "}
+                                         {" "}
           <label
             style={{ fontWeight: "500", display: "block", marginBottom: "8px" }}
           >
-            Gallery Images
+                        Gallery Images          {" "}
           </label>
-                     {" "}
+                                         {" "}
           <div
             style={{
               display: "flex",
@@ -288,10 +408,10 @@ const EditProductPage = () => {
               marginBottom: "10px",
             }}
           >
-                           {" "}
+                                                   {" "}
             {product.gallery?.map((img, index) => (
               <div key={index} style={{ position: "relative" }}>
-                                       {" "}
+                                                                       {" "}
                 <img
                   src={img}
                   alt={`Gallery ₹{index}`}
@@ -300,18 +420,18 @@ const EditProductPage = () => {
                     height: "70px",
                     objectFit: "cover",
                     borderRadius: "6px",
-                    border: "1px solid #eee",
+                    border: "1px solid var(--color-border)",
                   }}
                 />
-                                       {" "}
+                                                                       {" "}
                 <button
                   onClick={() => removeGalleryImage(img)}
                   style={{
                     position: "absolute",
                     top: "-5px",
                     right: "-5px",
-                    background: "#ef4444",
-                    color: "white",
+                    background: "var(--color-error)",
+                    color: "var(--color-inverse)",
                     border: "none",
                     borderRadius: "50%",
                     width: "20px",
@@ -324,18 +444,19 @@ const EditProductPage = () => {
                     boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
                   }}
                 >
-                                              ✕                        {" "}
+                                                                ✕              
+                                           {" "}
                 </button>
-                                   {" "}
+                                                                 {" "}
               </div>
             ))}
-                       {" "}
+                                             {" "}
           </div>
-                     {" "}
-          <label style={{ fontSize: "13px", color: "#666" }}>
-            Add more images to gallery:
+                                         {" "}
+          <label style={{ fontSize: "13px", color: "var(--color-muted)" }}>
+                        Add more images to gallery:          {" "}
           </label>
-                     {" "}
+                                         {" "}
           <input
             type="file"
             accept="image/*"
@@ -343,34 +464,34 @@ const EditProductPage = () => {
             onChange={handleGalleryChange}
             style={{ display: "block", marginTop: "5px" }}
           />
-                 {" "}
+                                   {" "}
         </div>
-               {" "}
+                               {" "}
         {loading && uploadProgress > 0 && (
           <div
             style={{
               width: "100%",
-              background: "#eee",
+              background: "var(--color-surface-muted)",
               borderRadius: "5px",
               height: "8px",
               marginBottom: "15px",
             }}
           >
-                           {" "}
+                                                   {" "}
             <div
               style={{
                 width: `${uploadProgress}%`,
-                background: "#4f46e5",
+                background: "var(--color-accent-strong)",
                 height: "100%",
                 borderRadius: "5px",
                 transition: "0.3s",
               }}
             />
-                       {" "}
+                                             {" "}
           </div>
         )}
-                {/* Title */}       {" "}
-        <label style={{ fontWeight: "500" }}>Title</label>       {" "}
+                        {/* Title */}               {" "}
+        <label style={{ fontWeight: "500" }}>Title</label>               {" "}
         <input
           type="text"
           name="title"
@@ -379,8 +500,8 @@ const EditProductPage = () => {
           placeholder="Product Title"
           style={inputStyle}
         />
-                {/* Price */}       {" "}
-        <label style={{ fontWeight: "500" }}>Price</label>       {" "}
+                        {/* Price */}               {" "}
+        <label style={{ fontWeight: "500" }}>Price</label>               {" "}
         <input
           type="number"
           name="price"
@@ -389,8 +510,8 @@ const EditProductPage = () => {
           placeholder="Product Price"
           style={inputStyle}
         />
-        {/* Discount */}        {" "}
-        <label style={{ fontWeight: "500" }}>Discount</label>        {" "}
+                {/* Discount */}                {" "}
+        <label style={{ fontWeight: "500" }}>Discount</label>                {" "}
         <input
           type="number"
           name="discount"
@@ -399,8 +520,9 @@ const EditProductPage = () => {
           placeholder="Product Discount"
           style={inputStyle}
         />
-        {/* Discount Expiry */}        {" "}
-        <label style={{ fontWeight: "500" }}>Discount Expiry Date & Time</label>        {" "}
+                {/* Discount Expiry */}                {" "}
+        <label style={{ fontWeight: "500" }}>Discount Expiry Date & Time</label>{" "}
+                       {" "}
         <input
           type="datetime-local"
           name="discountExpiry"
@@ -408,8 +530,8 @@ const EditProductPage = () => {
           onChange={handleChange}
           style={inputStyle}
         />
-                {/* Stock */}       {" "}
-        <label style={{ fontWeight: "500" }}>Stock</label>       {" "}
+                        {/* Stock */}               {" "}
+        <label style={{ fontWeight: "500" }}>Stock</label>               {" "}
         <input
           type="number"
           name="stock"
@@ -418,8 +540,8 @@ const EditProductPage = () => {
           placeholder="Available Stock"
           style={inputStyle}
         />
-                {/* Category */}       {" "}
-        <label style={{ fontWeight: "500" }}>Category</label>       {" "}
+                        {/* Category */}               {" "}
+        <label style={{ fontWeight: "500" }}>Category</label>               {" "}
         <input
           type="text"
           name="category"
@@ -428,7 +550,34 @@ const EditProductPage = () => {
           placeholder="Product Category"
           style={inputStyle}
         />
-                {/* Buttons */}       {" "}
+                        {/* GST Rate */}       {" "}
+        <label style={{ fontWeight: "500" }}>GST Rate (%)</label>       {" "}
+        <select
+          name="gstRate"
+          value={product.gstRate}
+          onChange={handleChange}
+          style={inputStyle}
+        >
+                   {" "}
+          {["0", "5", "12", "18", "28"].map((r) => (
+            <option key={r} value={r}>
+              {r === "0" ? "0% (Exempt)" : `${r}%`}
+            </option>
+          ))}
+                 {" "}
+        </select>
+                {/* HSN Code */}       {" "}
+        <label style={{ fontWeight: "500" }}>HSN Code</label>
+               {" "}
+        <input
+          type="text"
+          name="hsnCode"
+          value={product.hsnCode}
+          onChange={handleChange}
+          placeholder="e.g. 0207"
+          style={inputStyle}
+        />
+                {/* Buttons */}               {" "}
         <div
           style={{
             display: "flex",
@@ -436,42 +585,42 @@ const EditProductPage = () => {
             marginTop: "25px",
           }}
         >
-                   {" "}
+                                       {" "}
           <button
             onClick={updateProduct}
             style={{
               flex: 1,
               padding: "12px",
-              background: "#4f46e5",
-              color: "white",
+              background: "var(--color-primary)",
+              color: "var(--color-primary-fg)",
               border: "none",
               borderRadius: "8px",
               fontWeight: "500",
               cursor: "pointer",
             }}
           >
-                        {loading ? "Updating..." : "Update Product"}       
-             {" "}
+                                    {loading ? "Updating..." : "Update Product"}
+                                           {" "}
           </button>
-                   {" "}
+                                       {" "}
           <button
             onClick={() => navigate("/admin/add-product")}
             style={{
               flex: 1,
               padding: "12px",
-              background: "#E4E2E1",
+              background: "var(--color-border)",
               border: "none",
               borderRadius: "8px",
               cursor: "pointer",
             }}
           >
-                        Cancel          {" "}
+                                    Cancel                    {" "}
           </button>
-                 {" "}
+                                   {" "}
         </div>
-             {" "}
+                           {" "}
       </div>
-         {" "}
+                   {" "}
     </div>
   );
 };
@@ -482,7 +631,7 @@ const inputStyle = {
   marginTop: "6px",
   marginBottom: "16px",
   borderRadius: "6px",
-  border: "1px solid #ddd",
+  border: "1px solid var(--color-border)",
   fontSize: "14px",
 };
 

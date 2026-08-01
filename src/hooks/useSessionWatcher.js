@@ -1,7 +1,11 @@
-import { useEffect, useRef } from "react"
-import { doc, onSnapshot } from "firebase/firestore"
-import { fireDB } from "../context/FirebaseConfig"
-import { getLocalSessionId, forceLogout, inSessionGrace } from "../utils/sessionManager"
+import { useEffect, useRef } from "react";
+import { doc, onSnapshot } from "firebase/firestore";
+import { fireDB } from "../context/FirebaseConfig";
+import {
+  getLocalSessionId,
+  forceLogout,
+  inSessionGrace,
+} from "../utils/sessionManager";
 
 /**
  * Watches /users/{uid}.activeSessionId in realtime. When another device logs in
@@ -16,18 +20,18 @@ import { getLocalSessionId, forceLogout, inSessionGrace } from "../utils/session
  * @param {string|null|undefined} uid
  */
 const useSessionWatcher = (uid) => {
-  const unsubscribeRef = useRef(null)
+  const unsubscribeRef = useRef(null);
 
   useEffect(() => {
-    if (!uid) return
+    if (!uid) return;
 
-    const userRef = doc(fireDB, "users", uid)
+    const userRef = doc(fireDB, "users", uid);
     unsubscribeRef.current = onSnapshot(
       userRef,
       (snapshot) => {
-        if (!snapshot.exists()) return
-        const firestoreSessionId = snapshot.data()?.activeSessionId
-        const localSessionId = getLocalSessionId()
+        if (!snapshot.exists()) return;
+        const firestoreSessionId = snapshot.data()?.activeSessionId;
+        const localSessionId = getLocalSessionId();
 
         // Genuine cross-device takeover only: both ids present, they differ, and
         // we're not mid-login. A missing local id (pre-feature / just cleared) is
@@ -38,18 +42,18 @@ const useSessionWatcher = (uid) => {
           firestoreSessionId !== localSessionId &&
           !inSessionGrace()
         ) {
-          console.warn("Session conflict detected. Logging out this device.")
-          if (unsubscribeRef.current) unsubscribeRef.current()
-          forceLogout("session_conflict")
+          console.warn("Session conflict detected. Logging out this device.");
+          if (unsubscribeRef.current) unsubscribeRef.current();
+          forceLogout("session_conflict");
         }
       },
-      (error) => console.log("Session watcher error:", error)
-    )
+      (error) => console.log("Session watcher error:", error),
+    );
 
     return () => {
-      if (unsubscribeRef.current) unsubscribeRef.current()
-    }
-  }, [uid])
-}
+      if (unsubscribeRef.current) unsubscribeRef.current();
+    };
+  }, [uid]);
+};
 
-export default useSessionWatcher
+export default useSessionWatcher;

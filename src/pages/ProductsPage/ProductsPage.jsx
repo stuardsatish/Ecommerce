@@ -15,6 +15,7 @@ import { addCart, removeCart } from "../../context/CartSlice";
 import { addWishlist, removeWishlist } from "../../context/WishlistSlice";
 import { ProductCard } from "../../features/products/ProductCard";
 import { ProductCardSkeleton } from "../../features/products/ProductCardSkeleton";
+import { NewProductCardSkeleton } from "../../features/products/NewProductCardSkeleton";
 import FiltersSidebar from "../../features/products/FiltersSidebar";
 import useIsMobile from "../../hooks/useIsMobile";
 import {
@@ -48,7 +49,7 @@ import {
 import { auth, fireDB } from "../../context/FirebaseConfig";
 
 /* ============================================================
-   DESKTOP DESIGN HELPERS
+   DESKTOP DESIGN HELPERS
 ============================================================ */
 const PAGE_SIZE = 8;
 
@@ -87,15 +88,17 @@ const getMaxStock = (p) =>
 
 const Stars = ({ rating = 0, size = 12 }) => (
   <span className="flex items-center" style={{ gap: "1px" }}>
+       {" "}
     {[0, 1, 2, 3, 4].map((i) => (
       <Star
         key={i}
         size={size}
-        style={{ color: "#A43B31" }}
-        fill={i < Math.round(rating) ? "#A43B31" : "none"}
+        style={{ color: "var(--color-primary)" }}
+        fill={i < Math.round(rating) ? "var(--color-primary)" : "none"}
         strokeWidth={1.5}
       />
     ))}
+     {" "}
   </span>
 );
 
@@ -121,55 +124,66 @@ const NewProductCard = ({
   const isOut = stock <= 0;
 
   return (
-    <div className="product-card flex flex-col bg-white border border-[#C3C7C8] rounded-xl overflow-hidden shadow-[0px_4px_12px_rgba(0,0,0,0.05)]">
-      {/* Image area */}
+    <div className="product-card flex flex-col bg-surface border border-[var(--color-border-strong)] rounded-xl overflow-hidden shadow-[0px_4px_12px_rgba(0,0,0,0.05)]">
+            {/* Image area */}     {" "}
       <div
         className="relative cursor-pointer"
-        style={{ height: "160px", background: "#F6F3F2" }}
+        style={{ height: "160px", background: "var(--color-surface-muted)" }}
         onClick={() =>
           navigate(`/product/${product.id}`, { state: { product } })
         }
       >
+               {" "}
         <img
           src={getImage(product)}
           alt={name}
           loading="lazy"
           className="w-full h-full object-cover"
         />
-        <span className="absolute top-2.5 left-2.5 bg-[#1B1C1C] text-white uppercase font-bold rounded px-2 py-0.5 text-[9px] tracking-wide">
-          {product.badge || product.category || "Product"}
+               {" "}
+        <span className="absolute top-2.5 left-2.5 bg-[var(--color-ink)] text-inverse uppercase font-bold rounded px-2 py-0.5 text-[9px] tracking-wide">
+                    {product.badge || product.category || "Product"}       {" "}
         </span>
+               {" "}
         <button
           onClick={(e) => {
             e.stopPropagation();
             onToggleWishlist(product);
           }}
           aria-label="Toggle wishlist"
-          className="absolute top-2.5 right-2.5 w-8 h-8 rounded-full flex items-center justify-center bg-white/70"
+          className="absolute top-2.5 right-2.5 w-8 h-8 rounded-full flex items-center justify-center bg-surface/70"
           style={{
             backdropFilter: "blur(2px)",
             WebkitBackdropFilter: "blur(2px)",
           }}
         >
+                   {" "}
           <Heart
             size={15}
-            style={{ color: isWishlisted ? "#A43B31" : "#44474C" }}
-            fill={isWishlisted ? "#A43B31" : "none"}
+            style={{
+              color: isWishlisted
+                ? "var(--color-primary)"
+                : "var(--color-body)",
+            }}
+            fill={isWishlisted ? "var(--color-primary)" : "none"}
           />
+                 {" "}
         </button>
+             {" "}
       </div>
-
-      {/* Body */}
+            {/* Body */}     {" "}
       <div className="flex flex-col flex-1 p-3">
+               {" "}
         <div className="flex items-center gap-1.5 mb-1.5">
-          <Stars rating={product.rating} />
-          <span className="text-[12px] font-medium text-[#44474C]">
-            {Number(product.rating || 0).toFixed(1)}
+                    <Stars rating={product.rating} />         {" "}
+          <span className="text-[12px] font-medium text-[var(--color-body)]">
+                        {Number(product.rating || 0).toFixed(1)}         {" "}
           </span>
+                 {" "}
         </div>
-
+               {" "}
         <h3
-          className="font-semibold text-[#1B1C1C]"
+          className="font-semibold text-[var(--color-ink)]"
           style={{
             fontSize: "14px",
             lineHeight: "19px",
@@ -180,98 +194,139 @@ const NewProductCard = ({
             minHeight: "38px",
           }}
         >
-          {name}
+                    {name}       {" "}
         </h3>
-
+               {" "}
         <div className="mt-2">
+                   {" "}
           {discount > 0 ? (
             <div>
+                           {" "}
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-[16px] font-bold text-[#A43B31]">
-                  ₹{discountedPrice.toFixed(2)}
+                               {" "}
+                <span className="text-[16px] font-bold text-[var(--color-primary)]">
+                                    ₹{discountedPrice.toFixed(2)}             
+                   {" "}
                 </span>
-
-                <span className="text-[13px] text-gray-400 line-through">
-                  ₹{mrp.toFixed(2)}
+                               {" "}
+                <span className="text-[13px] text-muted line-through">
+                                    ₹{mrp.toFixed(2)}               {" "}
                 </span>
-
-                <span className="text-[11px] font-semibold text-green-600">
-                  {discount}% OFF
+                               {" "}
+                <span className="text-[11px] font-semibold text-success">
+                                    {discount}% OFF                {" "}
                 </span>
+                             {" "}
               </div>
+                           {" "}
               {product.discountExpiry && (
-                <div className="text-[10px] text-amber-700 font-medium mt-1">
-                  Ends: {new Date(product.discountExpiry).toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" })}
+                <div className="text-[10px] text-accent-strong font-medium mt-1">
+                                    Ends:{" "}
+                  {new Date(product.discountExpiry).toLocaleString("en-IN", {
+                    dateStyle: "short",
+                    timeStyle: "short",
+                  })}
+                                 {" "}
                 </div>
               )}
+                         {" "}
             </div>
           ) : (
-            <span className="text-[16px] font-bold text-[#A43B31]">
-              ₹{mrp.toFixed(2)}
+            <span className="text-[16px] font-bold text-[var(--color-primary)]">
+                            ₹{mrp.toFixed(2)}           {" "}
             </span>
           )}
+                 {" "}
         </div>
-
+               {" "}
         <div className="flex items-center gap-2 mt-2 mb-3">
+                   {" "}
           <span
             className="rounded px-2 py-0.5 text-[11px] font-bold"
             style={
               isOut || isLow
-                ? { background: "#FFDAD6", color: "#BA1A1A" }
-                : { background: "#DCFCE7", color: "#166534" }
+                ? {
+                    background: "var(--color-error-subtle)",
+                    color: "var(--color-error)",
+                  }
+                : {
+                    background: "var(--color-success-subtle)",
+                    color: "var(--color-success)",
+                  }
             }
           >
-            {isOut ? "Out of Stock" : `Available: ${stock}`}
+                        {isOut ? "Out of Stock" : `Available: ${stock}`}       
+             {" "}
           </span>
+                   {" "}
           <div
             className="rounded-full overflow-hidden"
-            style={{ width: "70px", height: "5px", background: "#EAE7E7" }}
+            style={{
+              width: "70px",
+              height: "5px",
+              background: "var(--color-border)",
+            }}
           >
+                       {" "}
             <div
               className="h-full rounded-full"
               style={{
                 width: `${pct}%`,
-                background: isLow ? "#BA1A1A" : "#22C55E",
+                background: isLow
+                  ? "var(--color-error)"
+                  : "var(--color-success)",
               }}
             />
+                     {" "}
           </div>
+                 {" "}
         </div>
-
+               {" "}
         <div className="mt-auto">
+                   {" "}
           {isOut ? (
             <button
               disabled
               className="w-full flex items-center justify-center gap-2 rounded-lg font-bold text-[13px] cursor-not-allowed"
               style={{
                 height: "40px",
-                background: "#EAE7E7",
-                color: "#74777D",
+                background: "var(--color-border)",
+                color: "var(--color-muted)",
               }}
             >
-              Out of Stock
+                            Out of Stock            {" "}
             </button>
           ) : quantity > 0 ? (
             <div
-              className="w-full flex items-center justify-between rounded-lg overflow-hidden border border-[#A43B31]"
+              className="w-full flex items-center justify-between rounded-lg overflow-hidden border border-[var(--color-primary)]"
               style={{ height: "40px" }}
             >
+                           {" "}
               <button
                 onClick={() => onDecrement(product)}
-                className="h-full flex-1 font-bold text-[18px] text-[#694000]"
+                className="h-full flex-1 font-bold text-[18px] text-[var(--color-accent-strong)]"
               >
-                −
+                                −              {" "}
               </button>
-              <span className="font-bold text-[14px] text-[#1B1C1C] min-w-[24px] text-center">
-                {quantity}
+                           {" "}
+              <span className="font-bold text-[14px] text-[var(--color-ink)] min-w-[24px] text-center">
+                                {quantity}             {" "}
               </span>
+                           {" "}
               <button
                 onClick={() => onAddToCart(product)}
                 disabled={quantity >= stock}
                 className="h-full flex-1 font-bold text-[18px]"
-                style={{ color: quantity >= stock ? "#E0C9A0" : "#694000" }}
+                style={{
+                  color:
+                    quantity >= stock
+                      ? "var(--color-disabled-fg)"
+                      : "var(--color-accent-strong)",
+                }}
               >
-                +
+                                +              {" "}
               </button>
+                         {" "}
             </div>
           ) : (
             <button
@@ -279,46 +334,57 @@ const NewProductCard = ({
               className="w-full flex items-center justify-center gap-2 rounded-lg font-bold text-[13px]"
               style={{
                 height: "40px",
-                background: "#A43B31",
-                color: "#FFFFFF",
+                background: "var(--color-primary)",
+                color: "var(--color-inverse)",
               }}
             >
-              <ShoppingCart size={15} />
-              Add to Cart
+                            <ShoppingCart size={15} />              Add to Cart
+                         {" "}
             </button>
           )}
+                 {" "}
         </div>
+             {" "}
       </div>
+         {" "}
     </div>
   );
 };
 
 const SectionLabel = ({ children }) => (
   <p
-    className="uppercase font-bold text-[#1B1C1C] mb-2"
+    className="uppercase font-bold text-[var(--color-ink)] mb-2"
     style={{ letterSpacing: "0.7px", fontSize: "11px" }}
   >
-    {children}
+        {children} {" "}
   </p>
 );
 
 const CheckRow = ({ checked, onChange, children, count }) => (
   <label className="flex items-center gap-2 py-1 cursor-pointer select-none">
+       {" "}
     <input
       type="checkbox"
       checked={checked}
       onChange={onChange}
-      className="w-4 h-4 rounded-[4px] border border-[#C3C7C8] bg-white accent-[#1B1C1C] cursor-pointer"
+      className="w-4 h-4 rounded-[4px] border border-[var(--color-border-strong)] bg-surface accent-[var(--color-ink)] cursor-pointer"
     />
-    <span className="flex-1 text-[13px] text-[#44474C]">{children}</span>
+       {" "}
+    <span className="flex-1 text-[13px] text-[var(--color-body)]">
+      {children}
+    </span>
+       {" "}
     {count !== undefined && (
-      <span className="text-[12px] text-[#44474C] opacity-60">{count}</span>
+      <span className="text-[12px] text-[var(--color-body)] opacity-60">
+        {count}
+      </span>
     )}
+     {" "}
   </label>
 );
 
 /* ============================================================
-   PRODUCTS PAGE
+   PRODUCTS PAGE
 ============================================================ */
 const ProductsPage = () => {
   const dispatch = useDispatch();
@@ -327,20 +393,17 @@ const ProductsPage = () => {
   const cartItems = useSelector((state) => state.cart.cartItems);
   const wishlistItems = useSelector((state) => state.wishlist.wishlistItems);
   const [loading, setLoading] = useState(false);
-  const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
+  const [mobileFilterOpen, setMobileFilterOpen] = useState(false); // Mobile layout (≤640px) — desktop layout is rendered untouched above this breakpoint
 
-  // Mobile layout (≤640px) — desktop layout is rendered untouched above this breakpoint
   const isMobile = useIsMobile(640);
-  const searchInputRef = useRef(null);
+  const searchInputRef = useRef(null); // FILTER STATES (shared by mobile layout / FiltersSidebar)
 
-  // FILTER STATES (shared by mobile layout / FiltersSidebar)
   const [selectedCategories, setSelectedCategories] = useState([]);
   const [minPrice, setMinPrice] = useState(0);
   const [minRating, setMinRating] = useState(0);
   const [sort, setSort] = useState("");
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(""); // DESKTOP-ONLY FILTER STATE (richer sidebar from the new design)
 
-  // DESKTOP-ONLY FILTER STATE (richer sidebar from the new design)
   const [filterSearch, setFilterSearch] = useState("");
   const [selectedDepartments, setSelectedDepartments] = useState([]);
   const [priceMin, setPriceMin] = useState("");
@@ -355,18 +418,16 @@ const ProductsPage = () => {
 
   const sidebarRef = useRef(null);
   const chipsRef = useRef(null);
-  const gridRef = useRef(null);
+  const gridRef = useRef(null); // CLEAR FILTERS (mobile)
 
-  // CLEAR FILTERS (mobile)
   const clearFilters = useCallback(() => {
     setSelectedCategories([]);
     setMinPrice(0);
     setMinRating(0);
     setSort("");
     setSearch("");
-  }, []);
+  }, []); // FETCH PRODUCTS
 
-  // FETCH PRODUCTS
   const fetchProducts = async () => {
     try {
       setLoading(true);
@@ -412,9 +473,8 @@ const ProductsPage = () => {
     if (!products.length) {
       fetchProducts();
     }
-  }, []);
+  }, []); // Lock body when mobile filter is open
 
-  // Lock body when mobile filter is open
   useEffect(() => {
     if (mobileFilterOpen) {
       document.body.style.overflow = "hidden";
@@ -424,9 +484,8 @@ const ProductsPage = () => {
     return () => {
       document.body.style.overflow = "";
     };
-  }, [mobileFilterOpen]);
+  }, [mobileFilterOpen]); // FILTER & SORT & GROUP PRODUCTS (mobile layout)
 
-  // FILTER & SORT & GROUP PRODUCTS (mobile layout)
   const { filteredProducts, groupedProducts } = useMemo(() => {
     let filtered = products.filter((product) => {
       return (
@@ -453,37 +512,34 @@ const ProductsPage = () => {
     }, {});
 
     return { filteredProducts: filtered, groupedProducts: grouped };
-  }, [products, selectedCategories, minPrice, minRating, sort, search]);
+  }, [products, selectedCategories, minPrice, minRating, sort, search]); // UNIQUE CATEGORIES
 
-  // UNIQUE CATEGORIES
   const categories = useMemo(
     () => [...new Set(products.map((p) => p.category))],
     [products],
-  );
+  ); // MAX PRICE FOR FILTER
 
-  // MAX PRICE FOR FILTER
   const maxPriceValue = useMemo(() => {
     if (products.length === 0) return 2000;
     return Math.max(...products.map((p) => Number(p.price || 0)));
-  }, [products]);
+  }, [products]); // MOBILE: total cart count (drives the app-bar badge + bottom-nav dot)
 
-  // MOBILE: total cart count (drives the app-bar badge + bottom-nav dot)
   const cartCount = useMemo(
     () => cartItems.reduce((acc, item) => acc + (item.quantity || 0), 0),
     [cartItems],
-  );
+  ); // Count active filters
 
-  // Count active filters
   const activeFilterCount =
     selectedCategories.length +
     (minPrice > 0 ? 1 : 0) +
     (minRating > 0 ? 1 : 0) +
     (sort ? 1 : 0) +
-    (search ? 1 : 0);
+    (search
+      ? 1
+      : 0); /* ============================================================
+       DESKTOP DERIVED DATA (new design, independent of mobile state)
+    ============================================================ */
 
-  /* ============================================================
-       DESKTOP DERIVED DATA (new design, independent of mobile state)
-    ============================================================ */
   const categoryCounts = useMemo(() => {
     const map = {};
     products.forEach((p) => {
@@ -590,9 +646,8 @@ const ProductsPage = () => {
     availability,
     deskSearch,
     deskSort,
-  ]);
+  ]); /* ---------- DESKTOP CART / WISHLIST HELPERS ---------- */
 
-  /* ---------- DESKTOP CART / WISHLIST HELPERS ---------- */
   const cartQty = useCallback(
     (id) => {
       const item = cartItems.find((x) => String(x.id) === String(id));
@@ -709,9 +764,8 @@ const ProductsPage = () => {
   const applyFilters = () => {
     setApplyTick((t) => t + 1);
     window.scrollTo({ top: 0, behavior: "smooth" });
-  };
+  }; /* ---------- DESKTOP ANIMATIONS ---------- */
 
-  /* ---------- DESKTOP ANIMATIONS ---------- */
   useGSAP(
     () => {
       if (sidebarRef.current) {
@@ -761,39 +815,43 @@ const ProductsPage = () => {
     },
   );
 
-  const totalProductCount = products.length;
+  const totalProductCount =
+    products.length; /* ============================================================
+       MOBILE LAYOUT (≤640px) — matches the reference design.
+       All Firebase/Redux logic above is shared; this is layout only.
+    ============================================================ */
 
-  /* ============================================================
-       MOBILE LAYOUT (≤640px) — matches the reference design.
-       All Firebase/Redux logic above is shared; this is layout only.
-    ============================================================ */
   if (isMobile) {
     const navIcon = (color) => ({ color });
     return (
       <div
-        className="min-h-screen bg-[#FBF9F8]"
+        className="min-h-screen bg-[var(--color-background)]"
         style={{
           fontFamily: "Inter, sans-serif",
           overflowX: "hidden",
           maxWidth: "100vw",
         }}
       >
+               {" "}
         {/* ── SEARCH SECTION (fixed flush under the global mobile header, 56px) ── */}
+               {" "}
         <div
           className="fixed inset-x-0 z-40 flex items-center"
           style={{
             top: "56px",
             height: "76px",
-            background: "#FBF9F8",
+            background: "var(--color-background)",
             padding: "16px 20px",
             gap: "12px",
           }}
         >
+                   {" "}
           <div className="relative flex-1">
+                       {" "}
             <SearchIcon
               size={15}
               style={{
-                color: "#74777D",
+                color: "var(--color-muted)",
                 position: "absolute",
                 left: "16px",
                 top: "50%",
@@ -801,6 +859,7 @@ const ProductsPage = () => {
                 pointerEvents: "none",
               }}
             />
+                       {" "}
             <input
               ref={searchInputRef}
               type="text"
@@ -809,18 +868,21 @@ const ProductsPage = () => {
               placeholder="Search for items..."
               className="w-full outline-none mobile-search-input"
               style={{
-                background: "#F6F3F2",
+                background: "var(--color-surface-muted)",
                 borderRadius: "12px",
                 height: "44px",
                 padding: "13px 16px 14px 48px",
                 fontSize: "14px",
                 fontWeight: 400,
-                color: "#1B1C1C",
+                color: "var(--color-ink)",
                 fontFamily: "Inter, sans-serif",
               }}
             />
+                     {" "}
           </div>
+                   {" "}
           {/* Filter trigger — opens the full filter sheet (all desktop filters) */}
+                   {" "}
           <button
             onClick={() => setMobileFilterOpen(true)}
             aria-label="Filters"
@@ -828,11 +890,13 @@ const ProductsPage = () => {
             style={{
               width: "44px",
               height: "44px",
-              background: "#F6F3F2",
+              background: "var(--color-surface-muted)",
               borderRadius: "12px",
             }}
           >
-            <SlidersHorizontal size={18} color="#74777D" />
+                       {" "}
+            <SlidersHorizontal size={18} color="var(--color-muted)" />         
+             {" "}
             {activeFilterCount > 0 && (
               <span
                 className="absolute flex items-center justify-center"
@@ -842,86 +906,109 @@ const ProductsPage = () => {
                   minWidth: "16px",
                   height: "16px",
                   padding: "0 4px",
-                  background: "#A43B31",
-                  color: "#fff",
-                  border: "1px solid #FBF9F8",
+                  background: "var(--color-primary)",
+                  color: "var(--color-inverse)",
+                  border: "1px solid var(--color-background)",
                   borderRadius: "9999px",
                   fontSize: "9px",
                   fontWeight: 700,
                   lineHeight: 1,
                 }}
               >
-                {activeFilterCount}
+                                {activeFilterCount}             {" "}
               </span>
             )}
+                     {" "}
           </button>
+                 {" "}
         </div>
-
-        {/* ── SCROLLABLE CONTENT (grouped by category, like desktop) ── */}
+               {" "}
+        {/* ── SCROLLABLE CONTENT (grouped by category, like desktop) ── */}   
+           {" "}
         {/* paddingTop = 56px header + 76px search bar + 8px gap. paddingBottom clears the global tab bar. */}
+               {" "}
         <main
           className="px-5"
           style={{ paddingTop: "140px", paddingBottom: "72px" }}
         >
+                   {" "}
           {loading ? (
             <div className="grid grid-cols-2" style={{ gap: "16px" }}>
+                           {" "}
               {[...Array(6)].map((_, i) => (
                 <ProductCardSkeleton key={i} />
               ))}
+                         {" "}
             </div>
           ) : Object.keys(groupedProducts).length === 0 ? (
             <div
               className="flex flex-col items-center justify-center text-center"
               style={{ gap: "14px", minHeight: "40vh" }}
             >
+                           {" "}
               <p
-                style={{ color: "#74777D", fontSize: "13px", fontWeight: 600 }}
+                style={{
+                  color: "var(--color-muted)",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                }}
               >
+                               {" "}
                 {activeFilterCount > 0
                   ? "No products match your filters."
                   : "No products available right now."}
+                             {" "}
               </p>
+                           {" "}
               {activeFilterCount > 0 && (
                 <button
                   onClick={clearFilters}
                   style={{
-                    color: "#A43B31",
+                    color: "var(--color-primary)",
                     fontWeight: 700,
                     fontSize: "12px",
                   }}
                 >
-                  Clear filters
+                                    Clear filters                {" "}
                 </button>
               )}
+                         {" "}
             </div>
           ) : (
             Object.keys(groupedProducts).map((category) => (
               <div key={category} style={{ marginBottom: "24px" }}>
+                               {" "}
                 <div
                   className="flex items-center justify-between"
                   style={{ marginBottom: "12px" }}
                 >
+                                   {" "}
                   <h2
                     style={{
                       fontSize: "18px",
                       fontWeight: 700,
-                      color: "#1B1C1C",
+                      color: "var(--color-ink)",
                       textTransform: "capitalize",
                     }}
                   >
-                    {category}
+                                        {category}                 {" "}
                   </h2>
+                                   {" "}
                   <span
                     style={{
                       fontSize: "12px",
                       fontWeight: 500,
-                      color: "#74777D",
+                      color: "var(--color-muted)",
                     }}
                   >
-                    {groupedProducts[category].length} items
+                                        {groupedProducts[category].length} items
+                                     {" "}
                   </span>
+                                 {" "}
                 </div>
+                               {" "}
                 <div className="grid grid-cols-2" style={{ gap: "16px" }}>
+                                   {" "}
                   {groupedProducts[category].map((product) => (
                     <ProductCard
                       key={product.id}
@@ -929,19 +1016,24 @@ const ProductsPage = () => {
                       variant="mobile"
                     />
                   ))}
+                                 {" "}
                 </div>
+                             {" "}
               </div>
             ))
           )}
+                 {" "}
         </main>
-
+               {" "}
         {/* ── BOTTOM NAV BAR — superseded by the global MobileNav tab bar; hidden. ── */}
+               {" "}
         <nav
           className="fixed bottom-0 inset-x-0 z-50 flex items-center justify-around"
           style={{
             display: "none",
             height: "64px",
-            background: "rgba(251,249,248,0.8)",
+            background:
+              "color-mix(in srgb, var(--color-background) 80%, transparent)",
             backdropFilter: "blur(6px)",
             WebkitBackdropFilter: "blur(6px)",
             borderRadius: "12px 12px 0 0",
@@ -949,35 +1041,38 @@ const ProductsPage = () => {
               "0px 10px 15px -3px rgba(0,0,0,0.1), 0px 4px 6px -4px rgba(0,0,0,0.1)",
           }}
         >
-          {/* Home — active on this route per spec */}
+                    {/* Home — active on this route per spec */}         {" "}
           <button
             onClick={() => navigate("/")}
             className="flex flex-col items-center justify-center"
-            style={{ gap: "4px", ...navIcon("#A43B31") }}
+            style={{ gap: "4px", ...navIcon("var(--color-primary)") }}
           >
-            <HomeIcon size={20} />
-            <span style={{ fontSize: "10px", fontWeight: 500 }}>Home</span>
+                        <HomeIcon size={20} />           {" "}
+            <span style={{ fontSize: "10px", fontWeight: 500 }}>Home</span>     
+               {" "}
           </button>
-          {/* Search */}
+                    {/* Search */}         {" "}
           <button
             onClick={() => {
               window.scrollTo({ top: 0, behavior: "smooth" });
               searchInputRef.current?.focus();
             }}
             className="flex flex-col items-center justify-center"
-            style={{ gap: "4px", ...navIcon("#44474C") }}
+            style={{ gap: "4px", ...navIcon("var(--color-body)") }}
           >
-            <SearchIcon size={20} />
-            <span style={{ fontSize: "10px", fontWeight: 500 }}>Search</span>
+                        <SearchIcon size={20} />           {" "}
+            <span style={{ fontSize: "10px", fontWeight: 500 }}>Search</span>   
+                 {" "}
           </button>
-          {/* Cart — with red dot badge */}
+                    {/* Cart — with red dot badge */}         {" "}
           <button
             onClick={() => navigate("/cart")}
             className="flex flex-col items-center justify-center"
-            style={{ gap: "4px", ...navIcon("#44474C") }}
+            style={{ gap: "4px", ...navIcon("var(--color-body)") }}
           >
+                       {" "}
             <span className="relative flex items-center justify-center">
-              <ShoppingCart size={20} />
+                            <ShoppingCart size={20} />             {" "}
               {cartCount > 0 && (
                 <span
                   style={{
@@ -986,44 +1081,52 @@ const ProductsPage = () => {
                     right: "-3px",
                     width: "8px",
                     height: "8px",
-                    background: "#A43B31",
+                    background: "var(--color-primary)",
                     borderRadius: "9999px",
                   }}
                 />
               )}
+                         {" "}
             </span>
-            <span style={{ fontSize: "10px", fontWeight: 500 }}>Cart</span>
+                       {" "}
+            <span style={{ fontSize: "10px", fontWeight: 500 }}>Cart</span>     
+               {" "}
           </button>
-          {/* Wishlist */}
+                    {/* Wishlist */}         {" "}
           <button
             onClick={() => navigate("/wishlist")}
             className="flex flex-col items-center justify-center"
-            style={{ gap: "4px", ...navIcon("#44474C") }}
+            style={{ gap: "4px", ...navIcon("var(--color-body)") }}
           >
-            <HeartIcon size={20} />
-            <span style={{ fontSize: "10px", fontWeight: 500 }}>Wishlist</span>
+                        <HeartIcon size={20} />           {" "}
+            <span style={{ fontSize: "10px", fontWeight: 500 }}>Wishlist</span> 
+                   {" "}
           </button>
-          {/* Profile */}
+                    {/* Profile */}         {" "}
           <button
             onClick={() => navigate("/myprofile")}
             className="flex flex-col items-center justify-center"
-            style={{ gap: "4px", ...navIcon("#44474C") }}
+            style={{ gap: "4px", ...navIcon("var(--color-body)") }}
           >
-            <UserIcon size={20} />
-            <span style={{ fontSize: "10px", fontWeight: 500 }}>Profile</span>
+                        <UserIcon size={20} />           {" "}
+            <span style={{ fontSize: "10px", fontWeight: 500 }}>Profile</span> 
+                   {" "}
           </button>
+                 {" "}
         </nav>
-
+               {" "}
         {/* ── FILTER BOTTOM SHEET (all desktop filter operations) ── */}
+               {" "}
         <div
           className={`mobile-bottom-sheet-backdrop ${mobileFilterOpen ? "open" : ""}`}
           onClick={() => setMobileFilterOpen(false)}
         />
+               {" "}
         <div
           className={`mobile-bottom-sheet ${mobileFilterOpen ? "open" : ""}`}
           style={{ fontFamily: "Inter, sans-serif" }}
         >
-          <div className="mobile-bottom-sheet-handle" />
+                    <div className="mobile-bottom-sheet-handle" />         {" "}
           <button
             onClick={() => setMobileFilterOpen(false)}
             aria-label="Close filters"
@@ -1033,14 +1136,16 @@ const ProductsPage = () => {
               right: "16px",
               width: "32px",
               height: "32px",
-              color: "#74777D",
+              color: "var(--color-muted)",
               fontSize: "18px",
               zIndex: 2,
             }}
           >
-            ✕
+                        ✕          {" "}
           </button>
+                   {" "}
           <div className="px-6 pb-8 pt-2">
+                       {" "}
             <FiltersSidebar
               categories={categories}
               selectedCategories={selectedCategories}
@@ -1054,78 +1159,90 @@ const ProductsPage = () => {
               search={search}
               setSearch={setSearch}
             />
+                       {" "}
             <button
               onClick={() => setMobileFilterOpen(false)}
               className="w-full flex items-center justify-center"
               style={{
                 marginTop: "24px",
                 height: "48px",
-                background: "#A43B31",
-                color: "#fff",
+                background: "var(--color-primary)",
+                color: "var(--color-inverse)",
                 borderRadius: "9999px",
                 fontWeight: 700,
                 fontSize: "15px",
               }}
             >
-              Show {filteredProducts.length} Results
+                            Show {filteredProducts.length} Results          
+               {" "}
             </button>
+                     {" "}
           </div>
+                 {" "}
         </div>
+             {" "}
       </div>
     );
-  }
+  } /* ============================================================
+       DESKTOP / WEB LAYOUT (new design — scaled to match html.png)
+    ============================================================ */
 
-  /* ============================================================
-       DESKTOP / WEB LAYOUT (new design — scaled to match html.png)
-    ============================================================ */
   return (
     <div
       className="min-h-screen flex"
-      style={{ background: "#FCF9F8", fontFamily: "Inter, sans-serif" }}
+      style={{
+        background: "var(--color-background)",
+        fontFamily: "Inter, sans-serif",
+      }}
     >
-      {/* ===================== SIDEBAR ===================== */}
+            {/* ===================== SIDEBAR ===================== */}     {" "}
       <aside
         ref={sidebarRef}
         className="hidden lg:flex flex-col flex-shrink-0 sticky top-[88px] self-start overflow-y-auto no-scrollbar"
         style={{
           width: "256px",
           height: "calc(100vh - 88px)",
-          background: "#F6F3F2",
-          borderRight: "1px solid #E4E2E1",
+          background: "var(--color-surface-muted)",
+          borderRight: "1px solid var(--color-border)",
           padding: "16px",
         }}
       >
-        {/* Top section */}
-        <h2 className="font-black text-[#1B1C1C]" style={{ fontSize: "18px" }}>
-          Categories
+                {/* Top section */}       {" "}
+        <h2
+          className="font-black text-[var(--color-ink)]"
+          style={{ fontSize: "18px" }}
+        >
+                    Categories        {" "}
         </h2>
+               {" "}
         <p
-          className="font-semibold text-[#44474C] opacity-70 mb-4"
+          className="font-semibold text-[var(--color-body)] opacity-70 mb-4"
           style={{ fontSize: "13px" }}
         >
-          Browse by department
+                    Browse by department        {" "}
         </p>
-
-        {/* Search filter */}
+                {/* Search filter */}       {" "}
         <div className="relative mb-5">
+                   {" "}
           <Filter
             size={15}
             className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
-            style={{ color: "#74777D" }}
+            style={{ color: "var(--color-muted)" }}
           />
+                   {" "}
           <input
             type="text"
             value={filterSearch}
             onChange={(e) => setFilterSearch(e.target.value)}
             placeholder="Search Filter..."
-            className="w-full outline-none bg-white border border-[#C3C7C8] rounded-lg text-[13px] text-[#1B1C1C]"
+            className="w-full outline-none bg-surface border border-[var(--color-border-strong)] rounded-lg text-[13px] text-[var(--color-ink)]"
             style={{ padding: "8px 12px 9px 32px" }}
           />
+                 {" "}
         </div>
-
-        {/* DEPARTMENT */}
+                {/* DEPARTMENT */}       {" "}
         <div className="mb-5">
-          <SectionLabel>Department</SectionLabel>
+                    <SectionLabel>Department</SectionLabel>         {" "}
           {displayedDepartments.length ? (
             displayedDepartments.map((cat) => (
               <CheckRow
@@ -1134,164 +1251,195 @@ const ProductsPage = () => {
                 onChange={() => toggleDepartment(cat)}
                 count={categoryCounts[cat] || 0}
               >
-                {toTitleCase(cat)}
+                                {toTitleCase(cat)}             {" "}
               </CheckRow>
             ))
           ) : (
-            <p className="text-[12px] text-[#44474C] opacity-60">
-              No departments
+            <p className="text-[12px] text-[var(--color-body)] opacity-60">
+                            No departments            {" "}
             </p>
           )}
+                 {" "}
         </div>
-
-        {/* PRICE RANGE */}
+                {/* PRICE RANGE */}       {" "}
         <div className="mb-5">
-          <SectionLabel>Price Range</SectionLabel>
+                    <SectionLabel>Price Range</SectionLabel>
+                   {" "}
           <input
             type="range"
             min={0}
             max={5000}
             value={priceMax === "" ? 5000 : Number(priceMax)}
             onChange={(e) => setPriceMax(e.target.value)}
-            className="w-full mb-3 accent-[#1B1C1C]"
+            className="w-full mb-3 accent-[var(--color-ink)]"
             style={{ height: "4px" }}
           />
+                   {" "}
           <div className="flex items-center gap-2">
+                       {" "}
             <input
               type="number"
               value={priceMin}
               onChange={(e) => setPriceMin(e.target.value)}
               placeholder="Min"
-              className="outline-none bg-white border border-[#C3C7C8] rounded text-[13px] text-[#1B1C1C] px-2 py-1.5"
+              className="outline-none bg-surface border border-[var(--color-border-strong)] rounded text-[13px] text-[var(--color-ink)] px-2 py-1.5"
               style={{ width: "103.5px" }}
             />
+                       {" "}
             <input
               type="number"
               value={priceMax}
               onChange={(e) => setPriceMax(e.target.value)}
               placeholder="Max"
-              className="outline-none bg-white border border-[#C3C7C8] rounded text-[13px] text-[#1B1C1C] px-2 py-1.5"
+              className="outline-none bg-surface border border-[var(--color-border-strong)] rounded text-[13px] text-[var(--color-ink)] px-2 py-1.5"
               style={{ width: "103.5px" }}
             />
+                     {" "}
           </div>
+                 {" "}
         </div>
-
-        {/* CUSTOMER RATING */}
+                {/* CUSTOMER RATING */}       {" "}
         <div className="mb-5">
-          <SectionLabel>Customer Rating</SectionLabel>
+                    <SectionLabel>Customer Rating</SectionLabel>         {" "}
           {[4, 3].map((t) => (
             <CheckRow
               key={t}
               checked={ratingThresholds.includes(t)}
               onChange={() => toggleRating(t)}
             >
+                           {" "}
               <span className="flex items-center gap-1">
-                {t}
+                                {t}
+                               {" "}
                 <Star
                   size={13}
-                  style={{ color: "#A43B31" }}
-                  fill="#A43B31"
+                  style={{ color: "var(--color-primary)" }}
+                  fill="var(--color-primary)"
                   strokeWidth={0}
                 />
-                &amp; Above
+                                &amp; Above              {" "}
               </span>
+                         {" "}
             </CheckRow>
           ))}
+                 {" "}
         </div>
-
-        {/* AVAILABILITY */}
+                {/* AVAILABILITY */}       {" "}
         <div className="mb-5">
-          <SectionLabel>Availability</SectionLabel>
+                    <SectionLabel>Availability</SectionLabel>         {" "}
           <CheckRow
             checked={availability.includes("inStock")}
             onChange={() => toggleAvailability("inStock")}
           >
-            In Stock
+                        In Stock          {" "}
           </CheckRow>
+                   {" "}
           <CheckRow
             checked={availability.includes("lowStock")}
             onChange={() => toggleAvailability("lowStock")}
           >
-            Low Stock
+                        Low Stock          {" "}
           </CheckRow>
+                 {" "}
         </div>
-
-        {/* Bottom buttons */}
+                {/* Bottom buttons */}       {" "}
         <div className="mt-auto pt-4 space-y-2">
+                   {" "}
           <button
             onClick={applyFilters}
-            className="w-full rounded-lg font-semibold text-white text-[14px]"
-            style={{ background: "#1B1C1C", height: "38px" }}
+            className="w-full rounded-lg font-semibold text-inverse text-[14px]"
+            style={{ background: "var(--color-ink)", height: "38px" }}
           >
-            Apply Filters
+                        Apply Filters          {" "}
           </button>
+                   {" "}
           <button
             onClick={clearAllFilters}
-            className="w-full flex items-center justify-center gap-2 font-semibold text-[#44474C] text-[14px]"
+            className="w-full flex items-center justify-center gap-2 font-semibold text-[var(--color-body)] text-[14px]"
             style={{ height: "38px" }}
           >
-            <X size={15} />
-            Clear All Filters
+                        <X size={15} />            Clear All Filters        
+             {" "}
           </button>
+                 {" "}
         </div>
+             {" "}
       </aside>
-
-      {/* ===================== MAIN ===================== */}
+            {/* ===================== MAIN ===================== */}     {" "}
       <main className="flex-1 min-w-0 px-5 lg:px-8 py-6">
-        {/* Summary section */}
+                {/* Summary section */}       {" "}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-5">
+                   {" "}
           <div>
+                       {" "}
             <h1
-              className="font-bold text-[#1B1C1C]"
+              className="font-bold text-[var(--color-ink)]"
               style={{ fontSize: "26px" }}
             >
-              Discover Everything
+                            Discover Everything            {" "}
             </h1>
-            <p className="text-[#44474C]" style={{ fontSize: "14px" }}>
-              Explore our curated collection of luxury and essentials.
+                       {" "}
+            <p
+              className="text-[var(--color-body)]"
+              style={{ fontSize: "14px" }}
+            >
+                            Explore our curated collection of luxury and
+              essentials.            {" "}
             </p>
+                     {" "}
           </div>
-          {/* Dark stats card */}
+                    {/* Dark stats card */}         {" "}
           <div
-            className="flex items-center gap-5 rounded-xl text-white flex-shrink-0"
-            style={{ background: "#1B1C1C", padding: "12px 24px" }}
+            className="flex items-center gap-5 rounded-xl text-inverse flex-shrink-0"
+            style={{ background: "var(--color-ink)", padding: "12px 24px" }}
           >
+                       {" "}
             <div>
+                           {" "}
               <div className="font-black" style={{ fontSize: "26px" }}>
-                {totalProductCount}
+                                {totalProductCount}             {" "}
               </div>
+                           {" "}
               <div
                 className="uppercase opacity-80"
                 style={{ fontSize: "11px", letterSpacing: "1.2px" }}
               >
-                Products Available
+                                Products Available              {" "}
               </div>
+                         {" "}
             </div>
-            <div className="w-px self-stretch bg-white opacity-20" />
-            <Store size={24} className="text-white opacity-40" />
+                       {" "}
+            <div className="w-px self-stretch bg-surface opacity-20" />
+                        <Store size={24} className="text-inverse opacity-40" /> 
+                   {" "}
           </div>
+                 {" "}
         </div>
-
-        {/* Category chips */}
+                {/* Category chips */}       {" "}
         <div
           ref={chipsRef}
           className="flex items-center gap-2 overflow-x-auto pb-2 mb-5 no-scrollbar"
         >
+                   {" "}
           <button
             onClick={() => setActiveChip("all")}
             className="cat-chip flex-shrink-0 rounded-full font-semibold px-3 py-1.5 text-[13px]"
             style={
               activeChip === "all"
-                ? { background: "#A43B31", color: "#FFFFFF" }
+                ? {
+                    background: "var(--color-primary)",
+                    color: "var(--color-inverse)",
+                  }
                 : {
-                    background: "#EAE7E7",
-                    border: "1px solid #C3C7C8",
-                    color: "#44474C",
+                    background: "var(--color-border)",
+                    border: "1px solid var(--color-border-strong)",
+                    color: "var(--color-body)",
                   }
             }
           >
-            All Categories
+                        All Categories          {" "}
           </button>
+                   {" "}
           {categories.filter(Boolean).map((cat) => (
             <button
               key={cat}
@@ -1299,126 +1447,161 @@ const ProductsPage = () => {
               className="cat-chip flex-shrink-0 rounded-full font-semibold px-3 py-1.5 text-[13px] whitespace-nowrap"
               style={
                 activeChip === cat
-                  ? { background: "#A43B31", color: "#FFFFFF" }
+                  ? {
+                      background: "var(--color-primary)",
+                      color: "var(--color-inverse)",
+                    }
                   : {
-                      background: "#EAE7E7",
-                      border: "1px solid #C3C7C8",
-                      color: "#44474C",
+                      background: "var(--color-border)",
+                      border: "1px solid var(--color-border-strong)",
+                      color: "var(--color-body)",
                     }
               }
             >
-              {toTitleCase(cat)}{" "}
-              <span className="opacity-60">{categoryCounts[cat] || 0}</span>
+                            {toTitleCase(cat)}              {" "}
+              <span className="opacity-60">{categoryCounts[cat] || 0}</span>   
+                     {" "}
             </button>
           ))}
+                 {" "}
         </div>
-
-        {/* Control bar */}
+                {/* Control bar */}       {" "}
         <div className="flex flex-col md:flex-row gap-3 mb-6">
+                   {" "}
           <div className="relative flex-1">
+                       {" "}
             <SearchIcon
               size={17}
               className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none"
-              style={{ color: "#74777D" }}
+              style={{ color: "var(--color-muted)" }}
             />
+                       {" "}
             <input
               type="text"
               value={deskSearch}
               onChange={(e) => setDeskSearch(e.target.value)}
               placeholder="Search products by name..."
-              className="w-full outline-none bg-white border border-[#C3C7C8] rounded-xl text-[14px] text-[#1B1C1C]"
+              className="w-full outline-none bg-surface border border-[var(--color-border-strong)] rounded-xl text-[14px] text-[var(--color-ink)]"
               style={{ height: "46px", padding: "12px 16px 12px 44px" }}
             />
+                     {" "}
           </div>
+                   {" "}
           <div className="flex items-center gap-2 flex-shrink-0">
-            <span className="text-[13px] text-[#44474C] font-medium">
-              Sort By:
+                       {" "}
+            <span className="text-[13px] text-[var(--color-body)] font-medium">
+                            Sort By:            {" "}
             </span>
+                       {" "}
             <select
               value={deskSort}
               onChange={(e) => setDeskSort(e.target.value)}
-              className="outline-none bg-white border border-[#C3C7C8] rounded-xl text-[14px] text-[#1B1C1C] px-3"
+              className="outline-none bg-surface border border-[var(--color-border-strong)] rounded-xl text-[14px] text-[var(--color-ink)] px-3"
               style={{ height: "46px" }}
             >
+                           {" "}
               {SORT_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
-                  {o.label}
+                                    {o.label}               {" "}
                 </option>
               ))}
+                         {" "}
             </select>
+                     {" "}
           </div>
+                 {" "}
         </div>
-
-        {/* Product sections */}
+                {/* Product sections */}       {" "}
         <div ref={gridRef}>
+                   {" "}
           {loading ? (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+            <div
+              className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5"
+              aria-busy="true"
+            >
+                           {" "}
               {[...Array(8)].map((_, i) => (
-                <div
-                  key={i}
-                  className="rounded-xl bg-[#F6F3F2] animate-pulse"
-                  style={{ height: "330px" }}
-                />
+                <NewProductCardSkeleton key={i} />
               ))}
+                         {" "}
             </div>
           ) : Object.keys(desktopGrouped).length === 0 ? (
             <div className="h-[40vh] flex flex-col items-center justify-center gap-4">
-              <p className="text-[#44474C] opacity-70 text-[14px]">
-                No products match your filters.
+                           {" "}
+              <p className="text-[var(--color-body)] opacity-70 text-[14px]">
+                                No products match your filters.            
+                 {" "}
               </p>
+                           {" "}
               <button
                 onClick={clearAllFilters}
-                className="text-[#865300] font-bold text-[13px]"
+                className="text-[var(--color-accent-strong)] font-bold text-[13px]"
               >
-                Clear all filters
+                                Clear all filters              {" "}
               </button>
+                         {" "}
             </div>
           ) : (
             Object.keys(desktopGrouped).map((category) => (
               <section key={category} className="mb-10">
-                {/* Category header */}
+                                {/* Category header */}               {" "}
                 <div
                   className="flex items-center justify-between pb-3 mb-5"
-                  style={{ borderBottom: "1px solid #E4E2E1" }}
+                  style={{ borderBottom: "1px solid var(--color-border)" }}
                 >
+                                   {" "}
                   <div className="flex items-center gap-3">
+                                       {" "}
                     <span
                       className="flex items-center justify-center rounded-full"
                       style={{
                         width: "34px",
                         height: "34px",
-                        background: "rgba(24,31,33,0.1)",
+                        background:
+                          "color-mix(in srgb, var(--color-ink) 10%, transparent)",
                       }}
                     >
-                      <LayoutGrid size={17} style={{ color: "#1B1C1C" }} />
+                                           {" "}
+                      <LayoutGrid
+                        size={17}
+                        style={{ color: "var(--color-ink)" }}
+                      />
+                                         {" "}
                     </span>
+                                       {" "}
                     <h2
-                      className="font-bold text-[#1B1C1C]"
+                      className="font-bold text-[var(--color-ink)]"
                       style={{ fontSize: "19px" }}
                     >
-                      {toTitleCase(category)}
+                                            {toTitleCase(category)}             
+                           {" "}
                     </h2>
+                                       {" "}
                     <span
-                      className="text-[#44474C] opacity-60"
+                      className="text-[var(--color-body)] opacity-60"
                       style={{ fontSize: "14px" }}
                     >
-                      (
+                                            (                      {" "}
                       {categoryCounts[category] ||
                         desktopGrouped[category].length}{" "}
-                      Products)
+                                            Products)                    {" "}
                     </span>
+                                     {" "}
                   </div>
+                                   {" "}
                   <button
                     onClick={() => setActiveChip(category)}
                     className="flex items-center gap-1 font-bold text-[13px]"
-                    style={{ color: "#865300" }}
+                    style={{ color: "var(--color-accent-strong)" }}
                   >
-                    View All <ChevronRight size={15} />
+                                        View All <ChevronRight size={15} />     
+                               {" "}
                   </button>
+                                 {" "}
                 </div>
-
-                {/* Grid */}
+                                {/* Grid */}               {" "}
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+                                   {" "}
                   {desktopGrouped[category].map((product) => (
                     <NewProductCard
                       key={product.id}
@@ -1430,34 +1613,41 @@ const ProductsPage = () => {
                       quantity={cartQty(product.id)}
                     />
                   ))}
+                                 {" "}
                 </div>
+                             {" "}
               </section>
             ))
           )}
+                 {" "}
         </div>
-
-        {/* Load more */}
+                {/* Load more */}       {" "}
         {!loading && desktopVisible.length < desktopFiltered.length && (
           <div className="flex flex-col items-center gap-2 mt-6">
+                       {" "}
             <button
               onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
-              className="flex items-center gap-2 rounded-xl font-bold text-[14px] text-[#1B1C1C] px-5"
+              className="flex items-center gap-2 rounded-xl font-bold text-[14px] text-[var(--color-ink)] px-5"
               style={{
-                background: "#E4E2E1",
-                border: "1px solid #C3C7C8",
+                background: "var(--color-border)",
+                border: "1px solid var(--color-border-strong)",
                 height: "44px",
               }}
             >
-              <RefreshCw size={16} />
-              Load More Products
+                            <RefreshCw size={16} />              Load More
+              Products            {" "}
             </button>
-            <p className="text-[#44474C] opacity-60 text-[12px]">
-              Showing {desktopVisible.length} of {desktopFiltered.length}{" "}
-              products
+                       {" "}
+            <p className="text-[var(--color-body)] opacity-60 text-[12px]">
+                            Showing {desktopVisible.length} of{" "}
+              {desktopFiltered.length}               products            {" "}
             </p>
+                     {" "}
           </div>
         )}
+             {" "}
       </main>
+         {" "}
     </div>
   );
 };

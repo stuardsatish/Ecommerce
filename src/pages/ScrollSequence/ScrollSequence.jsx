@@ -38,12 +38,15 @@ const ScrollSequence = () => {
       const img = imageCache[Math.round(imageSeq.frame)];
       if (img && img.complete) {
         context.clearRect(0, 0, canvas.width, canvas.height);
-       
+
         // Basic "cover" logic for background images
-        const scale = Math.max(canvas.width / img.width, canvas.height / img.height);
-        const x = (canvas.width / 2) - (img.width / 2) * scale;
-        const y = (canvas.height / 2) - (img.height / 2) * scale;
-       
+        const scale = Math.max(
+          canvas.width / img.width,
+          canvas.height / img.height,
+        );
+        const x = canvas.width / 2 - (img.width / 2) * scale;
+        const y = canvas.height / 2 - (img.height / 2) * scale;
+
         context.drawImage(img, x, y, img.width * scale, img.height * scale);
       }
     }
@@ -63,7 +66,7 @@ const ScrollSequence = () => {
           trigger: sectionRef.current,
           start: "top top",
           // Adjust this multiplier to change scroll speed
-          end: "+=" + (frameCount * 7),
+          end: "+=" + frameCount * 7,
           scrub: 0.5, // Lowering this makes it feel more responsive
           pin: true,
           // If you still see a gap, you can set pinSpacing: false,
@@ -72,22 +75,20 @@ const ScrollSequence = () => {
           onUpdate: (self) => {
             // Force render on scroll update
             render();
-          }
-        }
+          },
+        },
       });
     };
 
     // Cleanup on unmount
     return () => {
-      ScrollTrigger.getAll().forEach(t => t.kill());
+      ScrollTrigger.getAll().forEach((t) => t.kill());
     };
   }, []);
 
   return (
     <>
-      {!ready && (
-        <div style={loadingStyle}>Loading animation...</div>
-      )}
+      {!ready && <div style={loadingStyle}>Loading animation...</div>}
 
       {/* This wrapper ensures the scroll area exists */}
       <div ref={sectionRef} style={{ backgroundColor: "#000" }}>
@@ -98,10 +99,19 @@ const ScrollSequence = () => {
           />
         </section>
       </div>
-     
+
       {/* Optional: Add a footer or next section to see the transition */}
-      <div style={{ height: "100vh", background: "#111", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <h2>End of Sequence</h2>
+      <div
+        style={{
+          height: "100vh",
+          background: "#111",
+          color: "#fff",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <h2>End of Sequence</h2>
       </div>
     </>
   );
@@ -116,7 +126,7 @@ const loadingStyle = {
   alignItems: "center",
   justifyContent: "center",
   fontSize: "28px",
-  zIndex: 9999
+  zIndex: 9999,
 };
 
 export default ScrollSequence;
