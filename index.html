@@ -17,9 +17,9 @@
             saved && (saved.mode === "light" || saved.mode === "dark")
               ? saved.mode
               : window.matchMedia &&
-                  window.matchMedia("(prefers-color-scheme: dark)").matches
-                ? "dark"
-                : "light";
+                window.matchMedia("(prefers-color-scheme: dark)").matches
+              ? "dark"
+              : "light";
           var el = document.documentElement;
           el.setAttribute("data-theme", theme);
           el.setAttribute("data-mode", mode);

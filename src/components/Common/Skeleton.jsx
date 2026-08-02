@@ -1,4 +1,4 @@
-import React from "react";
+import React from 'react'
 
 /**
  * Base skeleton block: a theme-aware pulsing placeholder.
@@ -12,13 +12,13 @@ import React from "react";
  * decorative; the loading state is announced via aria-busy on the container.
  */
 const Skeleton = ({ variant = "rect", className = "" }) => {
-  const shape = variant === "circular" ? "rounded-full" : "rounded";
+  const shape = variant === "circular" ? "rounded-full" : "rounded"
   return (
     <div
       aria-hidden="true"
       className={`animate-pulse bg-surface-muted ${shape} ${className}`}
     />
-  );
-};
+  )
+}
 
-export default Skeleton;
+export default Skeleton

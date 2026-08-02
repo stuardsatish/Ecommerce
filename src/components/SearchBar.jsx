@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Search, X } from "lucide-react";
+import { useState, useEffect } from "react"
+import { Search, X } from "lucide-react"
 
 /**
  * Debounced search input with a clear (✕) button.
@@ -20,34 +20,28 @@ export default function SearchBar({
   debounceMs = 300,
   className = "",
 }) {
-  const [text, setText] = useState(value || "");
+  const [text, setText] = useState(value || "")
 
   // Keep local text in sync when the value is reset externally.
-  useEffect(() => {
-    setText(value || "");
-  }, [value]);
+  useEffect(() => { setText(value || "") }, [value])
 
   // Debounce keystrokes before committing upward.
   useEffect(() => {
     const t = setTimeout(() => {
-      if (text !== value) onChange(text);
-    }, debounceMs);
-    return () => clearTimeout(t);
-  }, [text]); // eslint-disable-line react-hooks/exhaustive-deps
+      if (text !== value) onChange(text)
+    }, debounceMs)
+    return () => clearTimeout(t)
+  }, [text]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const clear = () => {
-    setText("");
-    onChange("");
-    onClear?.();
-  };
+    setText("")
+    onChange("")
+    onClear?.()
+  }
 
   return (
     <div className={`relative ${className}`}>
-      <Search
-        size={16}
-        className="absolute left-3 top-1/2 -translate-y-1/2"
-        style={{ color: "var(--color-muted)" }}
-      />
+      <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--color-muted)" }} />
       <input
         type="text"
         value={text}
@@ -57,8 +51,7 @@ export default function SearchBar({
         className="w-full outline-none rounded-full"
         style={{
           background: "var(--color-surface)",
-          border:
-            "1px solid color-mix(in srgb, var(--color-border) 60%, transparent)",
+          border: "1px solid color-mix(in srgb, var(--color-border) 60%, transparent)",
           padding: "10px 38px 10px 36px",
           fontSize: "14px",
           color: "var(--color-ink)",
@@ -69,16 +62,11 @@ export default function SearchBar({
           onClick={clear}
           aria-label="Clear search"
           className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full"
-          style={{
-            width: "22px",
-            height: "22px",
-            background: "color-mix(in srgb, var(--color-ink) 12%, transparent)",
-            color: "var(--color-body)",
-          }}
+          style={{ width: "22px", height: "22px", background: "color-mix(in srgb, var(--color-ink) 12%, transparent)", color: "var(--color-body)" }}
         >
           <X size={13} />
         </button>
       )}
     </div>
-  );
+  )
 }

@@ -5,6 +5,7 @@ export const ProductDetailSkeleton = () => {
   return (
     <div className="bg-background min-h-screen text-ink overflow-x-hidden p-6 lg:p-20">
       <div className="w-full max-w-[1700px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-0 items-start pt-16">
+       
         {/* Left Info Placeholder */}
         <div className="lg:col-span-4 flex flex-col gap-6 lg:gap-10 pr-8">
           <div className="space-y-4">
@@ -12,7 +13,7 @@ export const ProductDetailSkeleton = () => {
             <Skeleton className="w-full h-16" />
             <Skeleton className="w-24 h-6" />
           </div>
-
+         
           <div className="space-y-3">
             <Skeleton className="w-20 h-3" />
             <Skeleton className="w-40 h-12" />
@@ -48,6 +49,7 @@ export const ProductDetailSkeleton = () => {
           ))}
           <Skeleton className="w-full h-40 rounded-[2.5rem]" />
         </div>
+
       </div>
     </div>
   );

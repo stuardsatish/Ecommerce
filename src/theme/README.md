@@ -50,7 +50,7 @@ no rebuild, no per-property JS.
 
 > Foreground/text tokens are **prefix-free** (`ink`, `body`, `muted`,
 > `inverse`) so the class reads `text-ink`, not `text-text-primary`. This also
-> leaves `text-primary` free to mean _brand-colored text_ (from `--color-primary`).
+> leaves `text-primary` free to mean *brand-colored text* (from `--color-primary`).
 
 **In JS / GSAP / canvas** — read the live variable so animations respect the
 active theme:
@@ -66,11 +66,10 @@ const brand = useThemeColor("primary");
 **Switching at runtime:**
 
 ```jsx
-const { theme, mode, setTheme, setMode, toggleMode, useSystemMode } =
-  useTheme();
-setTheme("brand-a"); // change theme
-toggleMode(); // light ⇄ dark  (pins the choice)
-useSystemMode(); // go back to following the OS preference
+const { theme, mode, setTheme, setMode, toggleMode, useSystemMode } = useTheme();
+setTheme("brand-a");   // change theme
+toggleMode();          // light ⇄ dark  (pins the choice)
+useSystemMode();       // go back to following the OS preference
 ```
 
 Selection persists to `localStorage` (`app-theme`). Mode defaults to the OS
@@ -91,7 +90,7 @@ That's it — save and the app updates.
    ```js
    export const THEME_LIST = [
      { value: "default", label: "Default" },
-     { value: "summer", label: "Summer" },
+     { value: "summer",  label: "Summer"  },
    ];
    ```
    It's usable immediately via `setTheme("summer")`.
@@ -112,14 +111,14 @@ theme/mode.
 
 ## Token reference
 
-| Group             | Tokens                                                                                                                                                  |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Interactive       | `primary` `primary-hover` `primary-fg` · `accent` `accent-strong` `accent-subtle` `accent-fg` · `link` `link-hover` · `ring` · `disabled` `disabled-fg` |
-| Surfaces          | `background` `surface` `surface-muted` `surface-inverse` `overlay`                                                                                      |
-| Text / foreground | `ink` `body` `muted` `inverse` (disabled text → `disabled-fg`)                                                                                          |
-| Borders           | `border` `border-strong` `border-subtle`                                                                                                                |
-| Status            | `success` `error` `warning` `info` — each also `-fg` `-subtle` `-border`                                                                                |
-| Charts            | `chart-1…8` `chart-gold` `chart-silver` `chart-bronze` `chart-grid` `chart-axis`                                                                        |
+| Group | Tokens |
+|---|---|
+| Interactive | `primary` `primary-hover` `primary-fg` · `accent` `accent-strong` `accent-subtle` `accent-fg` · `link` `link-hover` · `ring` · `disabled` `disabled-fg` |
+| Surfaces | `background` `surface` `surface-muted` `surface-inverse` `overlay` |
+| Text / foreground | `ink` `body` `muted` `inverse` (disabled text → `disabled-fg`) |
+| Borders | `border` `border-strong` `border-subtle` |
+| Status | `success` `error` `warning` `info` — each also `-fg` `-subtle` `-border` |
+| Charts | `chart-1…8` `chart-gold` `chart-silver` `chart-bronze` `chart-grid` `chart-axis` |
 
 > `white`, `black`, `transparent`, `current` are Tailwind built-ins and are
 > intentionally **not** themed. For anything that must flip between light and

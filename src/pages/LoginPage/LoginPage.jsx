@@ -1,7 +1,7 @@
 import React, { useState, useRef } from "react";
 import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { toast } from "react-toastify";
-import { signInWithEmailAndPassword } from "firebase/auth";
+import { signInWithEmailAndPassword, signOut } from "firebase/auth";
 import { auth, fireDB } from "../../context/FirebaseConfig";
 import { useDispatch, useSelector } from "react-redux";
 import { startLoading, stopLoading } from "../../context/LoadingSlice";
@@ -83,14 +83,19 @@ const LoginPage = () => {
     if (!email || !password) {
       toast.error("Please enter your email and password");
       return;
-    } // Block a conflicting second login while another tab is already authenticated.
+    }
 
+    // Automatically logout if another tab is authenticated
     const otherTab = await queryActiveTabs();
     if (otherTab?.role) {
-      toast.error(
-        `You are already logged in as ${otherTab.role} in another tab. Please logout first.`,
-      );
-      return;
+      try {
+        await signOut(auth);
+        broadcastAuth("logout");
+        // A small delay to ensure the other tab processes it and doesn't conflict
+        await new Promise(resolve => setTimeout(resolve, 500));
+      } catch (err) {
+        console.error("Auto-logout error:", err);
+      }
     }
 
     try {

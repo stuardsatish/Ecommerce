@@ -23,37 +23,20 @@ router.post("/validate", async (req, res) => {
 
     // Fail-closed limiter: cheap read, but stops code-enumeration by brute force.
     if (!(await rateLimit(`promo-validate:${decoded.uid}`, 20, 60000))) {
-      return res
-        .status(429)
-        .json({
-          success: false,
-          error: "Too many attempts. Please wait a moment.",
-        });
+      return res.status(429).json({ success: false, error: "Too many attempts. Please wait a moment." });
     }
 
-    const rawCode = String(req.body?.code || "")
-      .trim()
-      .toUpperCase();
+    const rawCode = String(req.body?.code || "").trim().toUpperCase();
     const subtotal = Math.max(0, Number(req.body?.subtotal || 0));
-    if (!rawCode)
-      return res.status(400).json({ success: false, error: "Enter a code" });
+    if (!rawCode) return res.status(400).json({ success: false, error: "Enter a code" });
 
-    const snap = await db()
-      .collection("promoCodes")
-      .where("code", "==", rawCode)
-      .limit(1)
-      .get();
-    if (snap.empty)
-      return res
-        .status(404)
-        .json({ success: false, error: "Invalid promo code" });
+    const snap = await db().collection("promoCodes").where("code", "==", rawCode).limit(1).get();
+    if (snap.empty) return res.status(404).json({ success: false, error: "Invalid promo code" });
 
     const pd = snap.docs[0].data();
 
     if (pd.expiryDate && Date.now() > new Date(pd.expiryDate).getTime()) {
-      return res
-        .status(410)
-        .json({ success: false, error: "This promo code has expired" });
+      return res.status(410).json({ success: false, error: "This promo code has expired" });
     }
 
     const value = Number(pd.value || 0);
@@ -72,9 +55,7 @@ router.post("/validate", async (req, res) => {
     });
   } catch (err) {
     console.error("[promo] validate failed:", err);
-    return res
-      .status(500)
-      .json({ success: false, error: "Could not validate code" });
+    return res.status(500).json({ success: false, error: "Could not validate code" });
   }
 });
 

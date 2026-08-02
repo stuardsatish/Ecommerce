@@ -483,21 +483,10 @@ body {
     }
 
     @keyframes float-blob {
-        0% {
-            transform: translate(0, 0) scale(1);
-        }
-
-        33% {
-            transform: translate(30px, -50px) scale(1.1);
-        }
-
-        66% {
-            transform: translate(-20px, 20px) scale(0.9);
-        }
-
-        100% {
-            transform: translate(0, 0) scale(1);
-        }
+        0% { transform: translate(0, 0) scale(1); }
+        33% { transform: translate(30px, -50px) scale(1.1); }
+        66% { transform: translate(-20px, 20px) scale(0.9); }
+        100% { transform: translate(0, 0) scale(1); }
     }
 }
 
@@ -563,7 +552,8 @@ body {
 .three-body__dot:nth-child(2)::after {
     bottom: 0;
     left: 0;
-    animation: wobble1 var(--uib-speed) infinite calc(var(--uib-speed) * -0.15) ease-in-out;
+    animation: wobble1 var(--uib-speed) infinite calc(var(--uib-speed) * -0.15) 
+     ease-in-out;
 }
 
 .three-body__dot:nth-child(3) {
@@ -579,47 +569,22 @@ body {
 }
 
 @keyframes spin78236 {
-    0% {
-        transform: rotate(0deg);
-    }
-
-    100% {
-        transform: rotate(360deg);
-    }
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
 }
 
 @keyframes wobble1 {
-
-    0%,
-    100% {
-        transform: translateY(0%) scale(1);
-        opacity: 1;
-    }
-
-    50% {
-        transform: translateY(-66%) scale(0.65);
-        opacity: 0.8;
-    }
+    0%, 100% { transform: translateY(0%) scale(1); opacity: 1; }
+    50% { transform: translateY(-66%) scale(0.65); opacity: 0.8; }
 }
 
 @keyframes wobble2 {
-
-    0%,
-    100% {
-        transform: translateY(0%) scale(1);
-        opacity: 1;
-    }
-
-    50% {
-        transform: translateY(66%) scale(0.65);
-        opacity: 0.8;
-    }
+    0%, 100% { transform: translateY(0%) scale(1); opacity: 1; }
+    50% { transform: translateY(66%) scale(0.65); opacity: 0.8; }
 }
 
 @keyframes shimmer {
-    100% {
-        transform: translateX(100%);
-    }
+    100% { transform: translateX(100%); }
 }
 
 /* Hide scrollbar but keep scrolling (all viewports) */
@@ -627,7 +592,6 @@ body {
     scrollbar-width: none;
     -ms-overflow-style: none;
 }
-
 .no-scrollbar::-webkit-scrollbar {
     width: 0;
     height: 0;
@@ -648,7 +612,6 @@ body {
         scrollbar-width: none;
         -ms-overflow-style: none;
     }
-
     .hide-scrollbar::-webkit-scrollbar {
         display: none;
     }

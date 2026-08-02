@@ -1,25 +1,25 @@
 /**
  * ThemeProvider / useTheme — runtime theme + light/dark switching.
  *
- *  Responsibilities
- *  ----------------
- *   • Generates one `:root[data-theme=..][data-mode=..] { --color-*: … }` CSS
- *     block per theme/mode from ./themes.js and injects it once into <head>.
- *     (This is exactly the CSS-variable structure described in the spec, but
- *      generated from the single source of truth so the two can never drift.)
- *   • Sets `data-theme` and `data-mode` on <html>, so the correct block wins
- *     via the CSS cascade. Switching themes = changing two attributes; no
- *     per-property JS thrash, and it works for CSS-only consumers too.
- *   • Persists the user's choice to localStorage.
- *   • Defaults `mode` to the OS preference (prefers-color-scheme) and `theme`
- *     to DEFAULT_THEME, and live-follows the OS until the user picks a mode.
+ * Responsibilities
+ * ----------------
+ *  • Generates one `:root[data-theme=..][data-mode=..] { --color-*: … }` CSS
+ *    block per theme/mode from ./themes.js and injects it once into <head>.
+ *    (This is exactly the CSS-variable structure described in the spec, but
+ *     generated from the single source of truth so the two can never drift.)
+ *  • Sets `data-theme` and `data-mode` on <html>, so the correct block wins
+ *    via the CSS cascade. Switching themes = changing two attributes; no
+ *    per-property JS thrash, and it works for CSS-only consumers too.
+ *  • Persists the user's choice to localStorage.
+ *  • Defaults `mode` to the OS preference (prefers-color-scheme) and `theme`
+ *    to DEFAULT_THEME, and live-follows the OS until the user picks a mode.
  *
- *  Consuming colors
- *  ----------------
- *   • In JSX: just use semantic Tailwind classes — `bg-primary`, `text-error`…
- *   • In JS/GSAP/canvas: call `readCssColor('primary')` (reads the live CSS
- *     variable, so it always matches the active theme/mode), or use the
- *     `useThemeColor()` / `useThemeColors()` hooks which re-read on change.
+ * Consuming colors
+ * ----------------
+ *  • In JSX: just use semantic Tailwind classes — `bg-primary`, `text-error`…
+ *  • In JS/GSAP/canvas: call `readCssColor('primary')` (reads the live CSS
+ *    variable, so it always matches the active theme/mode), or use the
+ *    `useThemeColor()` / `useThemeColors()` hooks which re-read on change.
  */
 import {
   createContext,
@@ -50,7 +50,7 @@ function buildThemeCss() {
       const values = themes[themeName]?.[mode];
       if (!values) continue;
       const decls = TOKEN_NAMES.map(
-        (token) => `  --color-${token}: ${values[token] ?? "initial"};`,
+        (token) => `  --color-${token}: ${values[token] ?? "initial"};`
       ).join("\n");
       css += `:root[data-theme="${themeName}"][data-mode="${mode}"] {\n${decls}\n}\n`;
     }
@@ -71,7 +71,7 @@ function validateThemes() {
       const missing = TOKEN_NAMES.filter((t) => values[t] == null);
       if (missing.length) {
         console.warn(
-          `[theme] "${themeName}.${mode}" is missing tokens: ${missing.join(", ")}`,
+          `[theme] "${themeName}.${mode}" is missing tokens: ${missing.join(", ")}`
         );
       }
     }
@@ -119,7 +119,7 @@ function readStored() {
 /**
  * Read a resolved theme color from the live CSS variables.
  * Always reflects the currently-active theme + mode.
- * @param {string} token  e.g. "primary", "text-muted", "chart-1"
+ * @param {string} token  e.g. "primary", "text-muted", "chart-1"
  * @param {string} [fallback]
  * @returns {string} e.g. "#A43B31"
  */
@@ -142,35 +142,40 @@ export function ThemeProvider({ children }) {
   const stored = readStored();
 
   const [theme, setThemeState] = useState(() =>
-    THEME_NAMES.includes(stored.theme) ? stored.theme : DEFAULT_THEME,
-  ); // `mode` may be null → meaning "follow the system".
+    THEME_NAMES.includes(stored.theme) ? stored.theme : DEFAULT_THEME
+  );
+  // `mode` may be null → meaning "follow the system".
   const [mode, setModeState] = useState(() =>
     stored.mode === "light" || stored.mode === "dark"
       ? stored.mode
-      : getSystemMode(),
-  ); // Whether the user has explicitly chosen a mode (stops OS auto-following).
+      : getSystemMode()
+  );
+  // Whether the user has explicitly chosen a mode (stops OS auto-following).
   const [modePinned, setModePinned] = useState(
-    () => stored.mode === "light" || stored.mode === "dark",
-  ); // Apply attributes to <html> whenever theme/mode change.
+    () => stored.mode === "light" || stored.mode === "dark"
+  );
 
+  // Apply attributes to <html> whenever theme/mode change.
   useEffect(() => {
     const root = document.documentElement;
     root.setAttribute("data-theme", theme);
     root.setAttribute("data-mode", mode);
     root.style.colorScheme = mode; // native form controls / scrollbars
-  }, [theme, mode]); // Persist selection.
+  }, [theme, mode]);
 
+  // Persist selection.
   useEffect(() => {
     try {
       localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify({ theme, mode: modePinned ? mode : null }),
+        JSON.stringify({ theme, mode: modePinned ? mode : null })
       );
     } catch {
       /* ignore quota / privacy-mode errors */
     }
-  }, [theme, mode, modePinned]); // Follow OS mode until the user pins one.
+  }, [theme, mode, modePinned]);
 
+  // Follow OS mode until the user pins one.
   useEffect(() => {
     if (modePinned || typeof window === "undefined" || !window.matchMedia)
       return;
@@ -194,8 +199,9 @@ export function ThemeProvider({ children }) {
   const toggleMode = useCallback(() => {
     setModePinned(true);
     setModeState((m) => (m === "dark" ? "light" : "dark"));
-  }, []); /** Revert to following the OS preference. */
+  }, []);
 
+  /** Revert to following the OS preference. */
   const useSystemMode = useCallback(() => {
     setModePinned(false);
     setModeState(getSystemMode());
@@ -212,7 +218,7 @@ export function ThemeProvider({ children }) {
       useSystemMode,
       readColor: readCssColor,
     }),
-    [theme, mode, modePinned, setTheme, setMode, toggleMode, useSystemMode],
+    [theme, mode, modePinned, setTheme, setMode, toggleMode, useSystemMode]
   );
 
   return (
@@ -234,8 +240,9 @@ export function useTheme() {
 export function useThemeColor(token, fallback = "") {
   const { theme, mode } = useTheme();
   return useMemo(
-    () => readCssColor(token, fallback), // eslint-disable-next-line react-hooks/exhaustive-deps
-    [token, fallback, theme, mode],
+    () => readCssColor(token, fallback),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [token, fallback, theme, mode]
   );
 }
 
@@ -250,7 +257,8 @@ export function useThemeColors(tokens) {
       const out = {};
       for (const t of tokens) out[t] = readCssColor(t);
       return out;
-    }, // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tokens.join(","), theme, mode],
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tokens.join(","), theme, mode]
   );
 }

@@ -5,6 +5,7 @@ export const ProductCardSkeleton = () => {
   return (
     <div className="w-full h-full group">
       <div className="h-[340px] w-full bg-surface relative flex flex-col rounded-2xl overflow-hidden shadow-sm border border-border-subtle">
+       
         {/* Wishlist Button Placeholder */}
         <div className="absolute top-4 right-4 z-10">
           <Skeleton variant="circular" className="w-9 h-9" />
@@ -19,7 +20,7 @@ export const ProductCardSkeleton = () => {
         <div className="p-3 flex flex-col flex-1 bg-surface relative pt-5">
           {/* Price Label Placeholder */}
           <div className="absolute right-3 -top-5">
-            <Skeleton className="w-16 h-7 rounded-full bg-border-strong" />
+             <Skeleton className="w-16 h-7 rounded-full bg-border-strong" />
           </div>
 
           {/* Category Placeholder */}
@@ -44,6 +45,7 @@ export const ProductCardSkeleton = () => {
         <div className="px-3 pb-3 bg-surface">
           <Skeleton className="w-full h-10 rounded-xl" />
         </div>
+
       </div>
     </div>
   );

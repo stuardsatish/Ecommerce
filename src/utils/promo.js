@@ -4,9 +4,9 @@
  * resolved discount for this code + subtotal. The authoritative discount is
  * still recomputed in /payment/create-order at checkout.
  */
-import { auth } from "../context/FirebaseConfig";
+import { auth } from "../context/FirebaseConfig"
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
+const API_BASE = import.meta.env.VITE_API_BASE_URL || ""
 
 /**
  * @param {string} code
@@ -15,23 +15,19 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
  * @throws {Error} with a user-friendly message on invalid/expired/failed codes
  */
 export async function validatePromoCode(code, subtotal) {
-  const headers = { "Content-Type": "application/json" };
-  const user = auth.currentUser;
+  const headers = { "Content-Type": "application/json" }
+  const user = auth.currentUser
   if (user) {
-    try {
-      headers.Authorization = `Bearer ${await user.getIdToken()}`;
-    } catch {
-      /* server 401s */
-    }
+    try { headers.Authorization = `Bearer ${await user.getIdToken()}` } catch { /* server 401s */ }
   }
   const res = await fetch(`${API_BASE}/api/promo/validate`, {
     method: "POST",
     headers,
     body: JSON.stringify({ code, subtotal }),
-  });
-  const data = await res.json().catch(() => ({}));
+  })
+  const data = await res.json().catch(() => ({}))
   if (!res.ok || !data.success) {
-    throw new Error(data.error || "Could not validate promo code.");
+    throw new Error(data.error || "Could not validate promo code.")
   }
-  return data;
+  return data
 }

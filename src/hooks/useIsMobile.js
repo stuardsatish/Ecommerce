@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect } from 'react';
 
 /**
  * Returns true when viewport width ≤ 768px.
@@ -6,7 +6,7 @@ import { useState, useEffect } from "react";
  */
 const useIsMobile = (breakpoint = 768) => {
   const [isMobile, setIsMobile] = useState(() => {
-    if (typeof window === "undefined") return false;
+    if (typeof window === 'undefined') return false;
     return window.innerWidth <= breakpoint;
   });
 
@@ -17,8 +17,8 @@ const useIsMobile = (breakpoint = 768) => {
     // Set initial value
     setIsMobile(mq.matches);
 
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
   }, [breakpoint]);
 
   return isMobile;
