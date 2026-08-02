@@ -16,8 +16,25 @@ const Hero = () => {
   const isMobile = useIsMobile();
 
   useGSAP(() => {
-    // Skip the complex chocolate-to-card animation on mobile
-    if (isMobile) return;
+    if (isMobile) {
+      // Mobile: animate each flavor card in from below as user scrolls
+      const cards = document.querySelectorAll(".card");
+      cards.forEach((card, i) => {
+        gsap.from(card, {
+          y: 60,
+          opacity: 0,
+          duration: 0.7,
+          delay: i * 0.12,
+          ease: "power3.out",
+          scrollTrigger: {
+            trigger: card,
+            start: "top 90%",
+            toggleActions: "play none none none",
+          },
+        });
+      });
+      return;
+    }
 
     const pairs = [
       {

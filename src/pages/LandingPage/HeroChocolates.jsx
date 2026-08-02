@@ -1,76 +1,56 @@
-import React from 'react'
+import React, { useRef } from 'react'
 import { meltAssets } from '../../assets/assets'
 
 import { gsap } from "gsap";
 import { useGSAP } from "@gsap/react";
 import { SplitText } from "gsap/SplitText";
+import useIsMobile from '../../hooks/useIsMobile';
 
 gsap.registerPlugin(SplitText);
 
 const HeroChocolates = ({ activeFlavor }) => {
+  const containerRef = useRef(null);
+  const isMobile = useIsMobile();
 
   useGSAP(() => {
+    const tl = gsap.timeline({ defaults: { ease: "power3.out" } });
 
-    gsap.from('.caramel-choco', {
-      y: "60%",
-      scale: 0.8,
-      duration: 1,
-      ease: "power3.out",
-    });
+    // Chocolate images slide up on load
+    tl.from('.caramel-choco', { y: isMobile ? "40%" : "60%", scale: 0.8, duration: 1 }, 0)
+      .from('.cocoa-choco',   { y: isMobile ? "30%" : "40%", scale: 0.8, duration: 1 }, 0)
+      .from('.orange-choco',  { y: isMobile ? "30%" : "40%", scale: 0.8, duration: 1 }, 0)
+      .from('.almond-choco',  { y: isMobile ? "40%" : "60%", scale: 0.8, duration: 1 }, 0);
 
-    gsap.from('.cocoa-choco', {
-      y: "40%",
-      scale: 0.8,
-      duration: 1,
-      ease: "power3.out",
-    });
+    // Stamp pop-in
+    tl.from('.stamp', { scale: 2, opacity: 0, duration: 0.4, ease: "back.out(1.7)" }, 0.8);
 
-    gsap.from('.orange-choco', {
-      y: "40%",
-      scale: 0.8,
-      duration: 1,
-      ease: "power3.out",
-    });
+    // Heading char-by-char reveal
+    const h1El = containerRef.current?.querySelector('h1');
+    const h2El = containerRef.current?.querySelector('h2');
 
-    gsap.from('.almond-choco', {
-      y: "60%",
-      scale: 0.8,
-      duration: 1,
-      ease: "power3.out",
-    });
+    if (h1El) {
+      SplitText.create(h1El, {
+        type: "chars",
+        onSplit(self) {
+          tl.from(self.chars, {
+            scale: 1.3,
+            opacity: 0,
+            stagger: isMobile ? 0.05 : 0.08,
+            duration: 0.5,
+            ease: "power3.out",
+          }, 0.1);
+        }
+      });
+    }
 
-    // Stamp
-    gsap.from('.stamp', {
-      scale: 2,
-      opacity: 0,
-      duration: 0.4,
-      delay: 1,
-      ease: "power3.out",
-    });
+    if (h2El) {
+      tl.from(h2El, { opacity: 0, y: 10, duration: 0.8 }, 0.4);
+    }
 
-    // Heading
-    SplitText.create("h1", {
-      type: "chars",
-      onSplit(self) {
-        gsap.from(self.chars, {
-          scale: 1.3,
-          opacity: 0,
-          stagger: 0.08,
-          ease: "power3.out",
-        })
-      }
-    });
-
-    gsap.from('h2', {
-      opacity: 0,
-      duration: 0.8,
-      delay: 0.4,
-    });
-   
-  })
+  }, { scope: containerRef })
 
   return (
-    <>
+    <div ref={containerRef}>
       <div className="text-center text-brown pt-24 pb-12 md:pt-20 md:pb-24">
         <h1 className='text-4xl md:text-8xl font-bold leading-tight md:leading-28'>Four <span className='text-orange'>Flavors.</span></h1>  
         <h2 className='font-medium text-xl md:text-[40px]'>One Perfect Melt.</h2>
@@ -90,7 +70,7 @@ const HeroChocolates = ({ activeFlavor }) => {
           <img src={meltAssets.stamp} alt="Stamp" className='stamp absolute z-10 max-w-20 md:max-w-37.5 -top-6 md:-top-10 -left-10 md:-left-20 transform rotate-32' />
         </div>
       </div>
-    </>
+    </div>
   )
 }
 

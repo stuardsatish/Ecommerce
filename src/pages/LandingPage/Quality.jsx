@@ -12,14 +12,61 @@ const Quality = () => {
   const isMobile = useIsMobile();
 
   useGSAP(() => {
-    // On mobile, skip the pinned card animation (its pin-spacer left a large
-    // blank gap); the cards render in their normal stacked flow instead.
-    if (isMobile) return;
+    if (isMobile) {
+      // Mobile: animate heading and cards in with fade-up on scroll
+      const h2El = sectionRef.current?.querySelector('h2');
+      const desc = sectionRef.current?.querySelector('div > div.max-w-full');
+      if (h2El) {
+        gsap.from(h2El, {
+          opacity: 0,
+          y: 40,
+          duration: 0.8,
+          ease: "power3.out",
+          scrollTrigger: {
+            trigger: sectionRef.current,
+            start: "top 80%",
+            toggleActions: "play none none none",
+          }
+        });
+      }
+      if (desc) {
+        gsap.from(desc, {
+          opacity: 0,
+          y: 25,
+          duration: 0.7,
+          delay: 0.15,
+          ease: "power2.out",
+          scrollTrigger: {
+            trigger: sectionRef.current,
+            start: "top 75%",
+            toggleActions: "play none none none",
+          }
+        });
+      }
+      // Animate each card with stagger
+      cardsRef.current.forEach((card, i) => {
+        if (!card) return;
+        gsap.from(card, {
+          opacity: 0,
+          y: 50,
+          rotate: i % 2 === 0 ? -6 : 6,
+          duration: 0.7,
+          delay: i * 0.12,
+          ease: "power3.out",
+          scrollTrigger: {
+            trigger: card,
+            start: "top 85%",
+            toggleActions: "play none none none",
+          }
+        });
+      });
+      return;
+    }
 
     // set initial state individually
     cardsRef.current.forEach((card, i) => {
       gsap.set(card, {
-        y: isMobile ? "60%" : "180%",
+        y: "180%",
         rotate: i % 2 === 0 ? -10 : 10,
       });
     });
@@ -28,7 +75,7 @@ const Quality = () => {
       scrollTrigger: {
         trigger: sectionRef.current,
         start: "top top",
-        end: isMobile ? "+=150%" : "+=300%",
+        end: "+=300%",
         scrub: 1,
         pin: true,
         anticipatePin: 1,
