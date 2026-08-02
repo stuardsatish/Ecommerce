@@ -53,13 +53,17 @@ const Hero = () => {
         choco,
         {
           x: () => {
+            if (!choco || !card) return 0;
             const c = choco.getBoundingClientRect();
             const t = card.getBoundingClientRect();
+            if (!c.width || !t.width) return 0;
             return t.left + t.width / 2 - (c.left + c.width / 2);
           },
           y: () => {
+            if (!choco || !card) return 0;
             const c = choco.getBoundingClientRect();
             const t = card.getBoundingClientRect();
+            if (!c.height || !t.height) return 0;
             return t.top + t.height / 2 - (c.top + c.height * 0.68);
           },
           scale: 0.6,
