@@ -103,22 +103,52 @@ async function isFeatureKilled(feature) {
   }
 }
 
+
+
 /**
- * Per-user block check. A user with status === "blocked" (or blocked === true)
- * in their /users doc is refused on sensitive routes without a redeploy.
- * @param {string} uid
- * @returns {Promise<boolean>} true if the user is blocked
- */
+ * Per-user block check. A user with status === "blocked" (or blocked === true)
+ * in their /users doc is refused on sensitive routes without a redeploy.
+ * @param {string} uid
+ * @returns {Promise<boolean>} true if the user is blocked
+ */
 async function isUserBlocked(uid) {
-  try {
-    const snap = await admin.firestore().collection("users").doc(uid).get();
-    if (!snap.exists) return false;
-    const d = snap.data() || {};
-    return d.status === "blocked" || d.blocked === true;
-  } catch (e) {
-    console.error("[isUserBlocked] error:", e);
-    return false;
-  }
+  try {
+    const snap = await admin.firestore().collection("users").doc(uid).get();
+    if (!snap.exists) return false;
+    const d = snap.data() || {};
+    return d.status === "blocked" || d.blocked === true;
+  } catch (e) {
+    console.error("[isUserBlocked] error:", e);
+    return false;
+  }
 }
 
-module.exports = { requireAuth, rateLimit, globalDailyLimit, isFeatureKilled, isUserBlocked };
+/**
+ * Checks if a promo code expiryDate is past the current time.
+ * Correctly handles ISO strings (with Z or timezone offset) and naive local datetime strings.
+ * @param {string|number} expiryDate
+ * @returns {boolean} true if expired
+ */
+function isPromoExpired(expiryDate) {
+  if (!expiryDate) return false;
+  let expTime;
+  if (typeof expiryDate === "string" && !expiryDate.endsWith("Z") && !/[+-]\d{2}:\d{2}$/.test(expiryDate)) {
+    const parts = expiryDate.split(/[-T:]/);
+    if (parts.length >= 5) {
+      expTime = new Date(
+        Number(parts[0]),
+        Number(parts[1]) - 1,
+        Number(parts[2]),
+        Number(parts[3]),
+        Number(parts[4])
+      ).getTime();
+    } else {
+      expTime = new Date(expiryDate).getTime();
+    }
+  } else {
+    expTime = new Date(expiryDate).getTime();
+  }
+  return !isNaN(expTime) && Date.now() > expTime;
+}
+
+module.exports = { requireAuth, rateLimit, globalDailyLimit, isFeatureKilled, isUserBlocked, isPromoExpired };

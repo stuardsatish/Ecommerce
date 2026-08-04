@@ -11,7 +11,7 @@
  */
 const express = require("express");
 const admin = require("firebase-admin");
-const { requireAuth, rateLimit } = require("../lib/util");
+const { requireAuth, rateLimit, isPromoExpired } = require("../lib/util");
 
 const router = express.Router();
 const db = () => admin.firestore();
@@ -35,7 +35,7 @@ router.post("/validate", async (req, res) => {
 
     const pd = snap.docs[0].data();
 
-    if (pd.expiryDate && Date.now() > new Date(pd.expiryDate).getTime()) {
+    if (isPromoExpired(pd.expiryDate)) {
       return res.status(410).json({ success: false, error: "This promo code has expired" });
     }
 
@@ -52,6 +52,7 @@ router.post("/validate", async (req, res) => {
       type: pd.type === "flat" ? "flat" : "percent",
       value,
       discount,
+      expiryDate: pd.expiryDate || null,
     });
   } catch (err) {
     console.error("[promo] validate failed:", err);

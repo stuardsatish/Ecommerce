@@ -15,7 +15,7 @@
 
 const express = require("express");
 const admin   = require("firebase-admin");
-const { requireAuth, isFeatureKilled } = require("../lib/util");
+const { requireAuth, isFeatureKilled, isPromoExpired } = require("../lib/util");
 const { writeOrderInTx, applyGstToItems, sumGstTotals, resolveInterState } = require("../lib/orderWriter");
 
 /** Read the seller's state (settings/invoiceSettings.state) for GST split. */
@@ -549,10 +549,10 @@ router.post("/billing-create", async (req, res) => {
         const promoSnap = await fdb.collection("promoCodes").where("code", "==", code).limit(1).get();
         if (!promoSnap.empty) {
           const pd = promoSnap.docs[0].data();
-          const expired = pd.expiryDate && Date.now() > new Date(pd.expiryDate).getTime();
+          const expired = isPromoExpired(pd.expiryDate);
           if (!expired) {
             const value = Number(pd.value || 0);
-            if (pd.type === "percent")   promoDiscount = Math.round((subtotalRounded * value) / 100);
+            if (pd.type === "percent")   promoDiscount = Math.round((subtotalRounded * value) / 100);
             else if (pd.type === "flat") promoDiscount = value;
             promoDiscount = Math.max(0, promoDiscount);
             appliedPromoCode = code;

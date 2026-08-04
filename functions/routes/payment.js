@@ -15,7 +15,7 @@ const express = require("express");
 const crypto = require("crypto");
 const Razorpay = require("razorpay");
 const admin = require("firebase-admin");
-const { requireAuth, rateLimit, globalDailyLimit, isFeatureKilled, isUserBlocked } = require("../lib/util");
+const { requireAuth, rateLimit, globalDailyLimit, isFeatureKilled, isUserBlocked, isPromoExpired } = require("../lib/util");
 const { writeOrderInTx, applyGstToItems, sumGstTotals, resolveInterState } = require("../lib/orderWriter");
 
 // Hard ceiling on Razorpay order creations per UTC day, across ALL users, so a
@@ -210,14 +210,8 @@ router.post("/create-order", async (req, res) => {
         if (!promoSnap.empty) {
           const pd = promoSnap.docs[0].data();
 
-          // Expiry check
-          let isExpired = false;
-          if (pd.expiryDate) {
-            const expiry = new Date(pd.expiryDate).getTime();
-            if (Date.now() > expiry) {
-              isExpired = true;
-            }
-          }
+          // Expiry check
+          const isExpired = isPromoExpired(pd.expiryDate);
 
           if (!isExpired) {
             const value = Number(pd.value || 0);
@@ -466,7 +460,7 @@ router.post("/cod-create", async (req, res) => {
         const promoSnap = await fdb.collection("promoCodes").where("code", "==", code).limit(1).get();
         if (!promoSnap.empty) {
           const pd = promoSnap.docs[0].data();
-          const isExpired = pd.expiryDate && new Date(pd.expiryDate).getTime() < Date.now();
+          const isExpired = isPromoExpired(pd.expiryDate);
           if (!isExpired) {
             const value = Number(pd.value || 0);
             if (pd.type === "percent") promoDiscount = Math.round((subtotal * value) / 100);

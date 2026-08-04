@@ -96,33 +96,36 @@ export default function UserOrderCard({ order, onBuyAgain, onViewDetails, onRevi
         <div style={{ borderTop: "1px solid var(--color-border)", paddingTop: "16px", width: "100%" }}>
           <p style={{ fontWeight: 700, fontSize: "14px", color: "var(--color-ink)", marginBottom: "12px" }}>Product Reviews</p>
           <div className="flex flex-col" style={{ gap: "12px" }}>
-            {items.map((item, index) => (
-              <div key={index} className="flex items-center justify-between" style={{ gap: "12px" }}>
-                <div className="flex items-center" style={{ gap: "12px", minWidth: 0 }}>
-                  <div className="flex-shrink-0 flex items-center justify-center" style={{ width: "40px", height: "40px", background: "var(--color-surface-muted)", borderRadius: "6px", padding: "2px" }}>
-                    <img src={item.thumbnail || item.image || "https://via.placeholder.com/64"} alt="" className="w-full h-full" style={{ objectFit: "cover", borderRadius: "4px" }} />
-                  </div>
-                  <div style={{ minWidth: 0 }}>
-                    <p style={{ fontWeight: 600, fontSize: "14px", color: "var(--color-ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.title}</p>
-                    <p style={{ fontSize: "12px", color: "var(--color-muted)" }}>Qty: {item.quantity}</p>
-                  </div>
-                </div>
-                {userReviews && userReviews[item.productId] ? (
-                  <button onClick={() => onReviewClick(item, order.id)} className="flex items-center" style={{ gap: "4px", fontSize: "12px", fontWeight: 700, color: "var(--color-primary)", background: "transparent", border: "none", cursor: "pointer" }}>
-                    <div className="flex items-center" style={{ gap: "2px", marginRight: "4px" }}>
-                      {[1, 2, 3, 4, 5].map((star) => (
-                        <Star key={star} size={14} style={{ fill: userReviews[item.productId].rating >= star ? "var(--color-chart-gold)" : "none", color: userReviews[item.productId].rating >= star ? "var(--color-chart-gold)" : "var(--color-border-strong)" }} />
-                      ))}
+            {items.map((item, index) => {
+              const rev = userReviews && (userReviews[`${order.id}_${item.productId}`] || (!userReviews[item.productId]?.orderId ? userReviews[item.productId] : null));
+              return (
+                <div key={index} className="flex items-center justify-between" style={{ gap: "12px" }}>
+                  <div className="flex items-center" style={{ gap: "12px", minWidth: 0 }}>
+                    <div className="flex-shrink-0 flex items-center justify-center" style={{ width: "40px", height: "40px", background: "var(--color-surface-muted)", borderRadius: "6px", padding: "2px" }}>
+                      <img src={item.thumbnail || item.image || "https://via.placeholder.com/64"} alt="" className="w-full h-full" style={{ objectFit: "cover", borderRadius: "4px" }} />
                     </div>
-                    <span>(Edit Review)</span>
-                  </button>
-                ) : (
-                  <button onClick={() => onReviewClick(item, order.id)} className="flex items-center" style={{ gap: "4px", fontSize: "12px", fontWeight: 700, color: "var(--color-primary)", background: "transparent", border: "none", cursor: "pointer" }}>
-                    <Star size={14} /> Write Review
-                  </button>
-                )}
-              </div>
-            ))}
+                    <div style={{ minWidth: 0 }}>
+                      <p style={{ fontWeight: 600, fontSize: "14px", color: "var(--color-ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.title}</p>
+                      <p style={{ fontSize: "12px", color: "var(--color-muted)" }}>Qty: {item.quantity}</p>
+                    </div>
+                  </div>
+                  {rev ? (
+                    <button onClick={() => onReviewClick(item, order.id)} className="flex items-center" style={{ gap: "4px", fontSize: "12px", fontWeight: 700, color: "var(--color-primary)", background: "transparent", border: "none", cursor: "pointer" }}>
+                      <div className="flex items-center" style={{ gap: "2px", marginRight: "4px" }}>
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <Star key={star} size={14} style={{ fill: rev.rating >= star ? "var(--color-chart-gold)" : "none", color: rev.rating >= star ? "var(--color-chart-gold)" : "var(--color-border-strong)" }} />
+                        ))}
+                      </div>
+                      <span>(Edit Review)</span>
+                    </button>
+                  ) : (
+                    <button onClick={() => onReviewClick(item, order.id)} className="flex items-center" style={{ gap: "4px", fontSize: "12px", fontWeight: 700, color: "var(--color-primary)", background: "transparent", border: "none", cursor: "pointer" }}>
+                      <Star size={14} /> Write Review
+                    </button>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
