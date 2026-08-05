@@ -72,198 +72,218 @@ import AdminRoute from "./routes/AdminRoute"
 // their own TopAppBar).
 const FULL_BLEED_ROUTES = ["/", "/video"]
 const NavbarSpacer = () => {
-  const { pathname } = useLocation()
-  if (FULL_BLEED_ROUTES.includes(pathname)) return null
-  return <div aria-hidden="true" className="hidden sm:block" style={{ height: "88px" }} />
+  const { pathname } = useLocation()
+  if (FULL_BLEED_ROUTES.includes(pathname)) return null
+  return <div aria-hidden="true" className="hidden sm:block" style={{ height: "88px" }} />
 }
 
 const areCartItemsEqual = (arr1, arr2) => {
-  if (!arr1 || !arr2) return false
-  if (arr1.length !== arr2.length) return false
-  for (const item1 of arr1) {
-    const item2 = arr2.find((x) => x.id === item1.id)
-    if (!item2) return false
-    if (item1.quantity !== item2.quantity) return false
-    if (item1.price !== item2.price) return false
-    if (Number(item1.discount || 0) !== Number(item2.discount || 0)) return false
-  }
-  return true
+  if (!arr1 || !arr2) return false
+  if (arr1.length !== arr2.length) return false
+  for (const item1 of arr1) {
+    const item2 = arr2.find((x) => x.id === item1.id)
+    if (!item2) return false
+    if (item1.quantity !== item2.quantity) return false
+    if (item1.price !== item2.price) return false
+    if (Number(item1.discount || 0) !== Number(item2.discount || 0)) return false
+    if ((item1.discountExpiry || "") !== (item2.discountExpiry || "")) return false
+  }
+  return true
 }
 
 const App = () => {
 
-  const dispatch = useDispatch()
+  const dispatch = useDispatch()
 
-  const cartItems = useSelector((state) => state.cart.cartItems)
-  const wishListItems = useSelector((state) => state.wishlist.wishlistItems)
-  const authUser = useSelector((state) => state.user.user)
+  const cartItems = useSelector((state) => state.cart.cartItems)
+  const wishListItems = useSelector((state) => state.wishlist.wishlistItems)
+  const authUser = useSelector((state) => state.user.user)
 
-  // Single-session enforcement: logs this device out if another device logs in.
-  useSessionWatcher(authUser?.uid)
+  // Single-session enforcement: logs this device out if another device logs in.
+  useSessionWatcher(authUser?.uid)
 
-  const [authChecked, setAuthChecked] = useState(false)
+  const [authChecked, setAuthChecked] = useState(false)
 
-  // Keep a ref to current cartItems to prevent infinite listener update loops
-  const cartItemsRef = useRef(cartItems)
-  useEffect(() => {
-    cartItemsRef.current = cartItems
-  }, [cartItems])
+  // Keep a ref to current cartItems to prevent infinite listener update loops
+  const cartItemsRef = useRef(cartItems)
+  useEffect(() => {
+    cartItemsRef.current = cartItems
+  }, [cartItems])
 
-  // AUTH + LOAD USER + CART + WISHLIST
-  useEffect(() => {
+  // AUTH + LOAD USER + CART + WISHLIST
+  useEffect(() => {
 
-    dispatch(startLoading())
+    dispatch(startLoading())
 
-    let unsubCart = null  // will hold the onSnapshot unsubscribe for cart
+    let unsubCart = null  // will hold the onSnapshot unsubscribe for cart
 
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
 
-      // Clean up any previous cart listener when auth state changes
-      if (unsubCart) { unsubCart(); unsubCart = null }
+      // Clean up any previous cart listener when auth state changes
+      if (unsubCart) { unsubCart(); unsubCart = null }
 
-      if (user) {
+      if (user) {
 
-        try {
+        try {
 
-          // USER DATA
-          const userRef = doc(fireDB, "users", user.uid)
-          const userSnap = await getDoc(userRef)
+          // USER DATA
+          const userRef = doc(fireDB, "users", user.uid)
+          const userSnap = await getDoc(userRef)
 
-          if (userSnap.exists()) {
+          if (userSnap.exists()) {
 
-            const userData = userSnap.data()
+            const userData = userSnap.data()
 
-            dispatch(setUser({
-              ...userData,
-              uid: user.uid,
-              role: userData.role,
-              createdAt: userData.createdAt
-                ? userData.createdAt.toDate().toISOString()
-                : null,
-              lastOrderDate: userData.lastOrderDate
-                ? userData.lastOrderDate.toDate().toISOString()
-                : null,
-              lastLoginAt: userData.lastLoginAt?.toDate
-                ? userData.lastLoginAt.toDate().toISOString()
-                : (userData.lastLoginAt || null)
-            }))
+            dispatch(setUser({
+              ...userData,
+              uid: user.uid,
+              role: userData.role,
+              createdAt: userData.createdAt
+                ? userData.createdAt.toDate().toISOString()
+                : null,
+              lastOrderDate: userData.lastOrderDate
+                ? userData.lastOrderDate.toDate().toISOString()
+                : null,
+              lastLoginAt: userData.lastLoginAt?.toDate
+                ? userData.lastLoginAt.toDate().toISOString()
+                : (userData.lastLoginAt || null)
+            }))
 
-          }
+          }
 
-          // LOAD CART — real-time listener so Firestore changes (e.g. admin
-          // clearing the cart after creating an order) are reflected instantly
-          // across all tabs without needing BroadcastChannel or page reloads.
-          const cartRef = doc(fireDB, "carts", user.uid)
-          unsubCart = onSnapshot(cartRef, (cartSnap) => {
-            if (cartSnap.exists()) {
-              const items = cartSnap.data().items || []
-              const formattedItems = items.map(item => ({
-                id: item.productId,
-                title: item.title,
-                price: item.price,
-                quantity: item.quantity,
-                image: item.image,
-                stock: item.stock,
-                category: item.category || "general",
-                discount: Number(item.discount || 0),
-              }))
-              
-              if (!areCartItemsEqual(formattedItems, cartItemsRef.current)) {
-                dispatch(setCart(formattedItems))
-              }
-            } else {
-              if (cartItemsRef.current.length > 0) {
-                dispatch(setCart([]))
-              }
-            }
-          })
+          // LOAD CART — real-time listener so Firestore changes (e.g. admin
+          // clearing the cart after creating an order) are reflected instantly
+          // across all tabs without needing BroadcastChannel or page reloads.
+          const cartRef = doc(fireDB, "carts", user.uid)
+          unsubCart = onSnapshot(cartRef, async (cartSnap) => {
+            if (cartSnap.exists()) {
+              const items = cartSnap.data().items || []
 
-          // LOAD WISHLIST
-          const wishlistRef = collection(fireDB, "wishlists")
-          const q = query(wishlistRef, where("userId", "==", user.uid))
-          const wishlistSnap = await getDocs(q)
+              // Fetch live product catalog once to get up-to-date discount/expiry.
+              // This ensures expired discounts are never shown even if the cart
+              // document was saved before the discountExpiry field existed.
+              let productMap = {}
+              try {
+                const prodSnap = await getDocs(collection(fireDB, "products"))
+                prodSnap.docs.forEach(d => { productMap[d.id] = d.data() })
+              } catch (e) {
+                console.warn("Could not fetch products for cart enrichment:", e)
+              }
 
-          const wishlistData = wishlistSnap.docs.map((doc) => {
+              const formattedItems = items.map(item => {
+                const liveProduct = productMap[item.productId] || {}
+                return {
+                  id: item.productId,
+                  title: item.title,
+                  price: item.price,
+                  quantity: item.quantity,
+                  image: item.image,
+                  stock: item.stock,
+                  category: item.category || "general",
+                  // Always use live product discount & expiry so expired discounts
+                  // don't persist in the cart when a product's discount changes.
+                  discount: Number(liveProduct.discount ?? item.discount ?? 0),
+                  discountExpiry: liveProduct.discountExpiry ?? item.discountExpiry ?? "",
+                }
+              })
+              
+              if (!areCartItemsEqual(formattedItems, cartItemsRef.current)) {
+                dispatch(setCart(formattedItems))
+              }
+            } else {
+              if (cartItemsRef.current.length > 0) {
+                dispatch(setCart([]))
+              }
+            }
+          })
 
-            const data = doc.data()
+          // LOAD WISHLIST
+          const wishlistRef = collection(fireDB, "wishlists")
+          const q = query(wishlistRef, where("userId", "==", user.uid))
+          const wishlistSnap = await getDocs(q)
 
-            return {
-              docId: doc.id,
-              ...data,
-              addedAt: data.addedAt
-                ? data.addedAt.toDate().toISOString()
-                : null
-            }
+          const wishlistData = wishlistSnap.docs.map((doc) => {
 
-          })
+            const data = doc.data()
 
-          dispatch(setWishlist(wishlistData))
+            return {
+              docId: doc.id,
+              ...data,
+              addedAt: data.addedAt
+                ? data.addedAt.toDate().toISOString()
+                : null
+            }
 
-        } catch (error) {
+          })
 
-          console.error("Error loading user data:", error)
+          dispatch(setWishlist(wishlistData))
 
-        }
+        } catch (error) {
 
-      } else {
+          console.error("Error loading user data:", error)
 
-        dispatch(clearUser())
-        dispatch(setCart([]))
-        dispatch(setWishlist([]))
+        }
 
-      }
+      } else {
 
-      dispatch(stopLoading())
-      setAuthChecked(true)
+        dispatch(clearUser())
+        dispatch(setCart([]))
+        dispatch(setWishlist([]))
 
-    })
+      }
 
-    return () => {
-      unsubscribe()
-      if (unsubCart) unsubCart()
-    }
+      dispatch(stopLoading())
+      setAuthChecked(true)
 
-  }, [dispatch])
+    })
 
-  // AUTO SAVE CART TO FIRESTORE
-  useEffect(() => {
+    return () => {
+      unsubscribe()
+      if (unsubCart) unsubCart()
+    }
 
-    const user = auth.currentUser
-    if (!user) return
+  }, [dispatch])
 
-    const saveCart = async () => {
+  // AUTO SAVE CART TO FIRESTORE
+  useEffect(() => {
 
-      try {
+    const user = auth.currentUser
+    if (!user) return
 
-        await setDoc(
-          doc(fireDB, "carts", user.uid),
-          {
-            items: cartItems.map(item => ({
-              productId: item.id,
-              title: item.title,
-              price: item.price,
-              quantity: item.quantity,
-              image: item.thumbnail || item.image,
-              stock: item.stock || 0,
-              category: item.category || "general",
-              discount: Number(item.discount || 0),
-            })),
-            updatedAt: serverTimestamp()
-          },
-          { merge: true }
-        )
+    const saveCart = async () => {
 
-      } catch (error) {
+      try {
 
-        console.error("Error saving cart:", error)
+        await setDoc(
+          doc(fireDB, "carts", user.uid),
+          {
+            items: cartItems.map(item => ({
+              productId: item.id,
+              title: item.title,
+              price: item.price,
+              quantity: item.quantity,
+              image: item.thumbnail || item.image,
+              stock: item.stock || 0,
+              category: item.category || "general",
+              discount: Number(item.discount || 0),
+              discountExpiry: item.discountExpiry || "",
+            })),
+            updatedAt: serverTimestamp()
+          },
+          { merge: true }
+        )
 
-      }
+      } catch (error) {
 
-    }
+        console.error("Error saving cart:", error)
 
-    saveCart()
+      }
 
-  }, [cartItems])
+    }
+
+    saveCart()
+
+  }, [cartItems])
 
   if (!authChecked) {
     return <Loader />

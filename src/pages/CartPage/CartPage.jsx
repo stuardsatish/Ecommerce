@@ -77,91 +77,104 @@ const CartPage = () => {
             // COD defaults to enabled for docs created before the flag existed.
             setPaymentSettings({ ...pd, codPayment: pd.codPayment !== false });
           }
-          if (shipSnap.exists()) {
-            const sd = shipSnap.data();
-            setShippingConfig({
-              freeShippingThreshold: typeof sd.freeShippingThreshold === "number" ? sd.freeShippingThreshold : 500,
-              shippingCost: typeof sd.shippingCost === "number" ? sd.shippingCost : 49,
-            });
-          }
-        }
-      } catch (error) {
-        console.error("Error fetching settings:", error);
-      } finally {
-        if (active) {
-          setSettingsLoading(false);
-        }
-      }
-    };
-    fetchSettings();
-    return () => {
-      active = false;
-    };
-  }, []);
+          if (shipSnap.exists()) {
+            const sd = shipSnap.data();
+            setShippingConfig({
+              freeShippingThreshold: typeof sd.freeShippingThreshold === "number" ? sd.freeShippingThreshold : 500,
+              shippingCost: typeof sd.shippingCost === "number" ? sd.shippingCost : 49,
+            });
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching settings:", error);
+      } finally {
+        if (active) {
+          setSettingsLoading(false);
+        }
+      }
+    };
+    fetchSettings();
+    return () => {
+      active = false;
+    };
+  }, []);
 
-  const isCheckoutDisabled = !paymentSettings.whatsappPayment && !paymentSettings.razorpayPayment && !paymentSettings.codPayment;
+  const isCheckoutDisabled = !paymentSettings.whatsappPayment && !paymentSettings.razorpayPayment && !paymentSettings.codPayment;
 
-  // Mobile design renders below the `lg` breakpoint; the desktop redesign at lg+.
-  const isMobile = useIsMobile(1024);
+  // Mobile design renders below the `lg` breakpoint; the desktop redesign at lg+.
+  const isMobile = useIsMobile(1024);
 
-  /* ---------- DESKTOP REDESIGN STATE ---------- */
-  const [promoCode, setPromoCode] = useState("");
-  const [appliedPromo, setAppliedPromo] = useState(null);
-  const [suggestions, setSuggestions] = useState([]);
-  const [loadingSuggestions, setLoadingSuggestions] = useState(true);
+  /* ---------- DESKTOP REDESIGN STATE ---------- */
+  const [promoCode, setPromoCode] = useState("");
+  const [appliedPromo, setAppliedPromo] = useState(null);
+  const [suggestions, setSuggestions] = useState([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(true);
 
-  const total = Math.round(
-    cartItems.reduce(
-      (acc, item) => acc + Number(item.price) * item.quantity,
-      0,
-    ),
-  );
+  const total = Math.round(
+    cartItems.reduce(
+      (acc, item) => acc + Number(item.price) * item.quantity,
+      0,
+    ),
+  );
 
-  const totalItems = cartItems.reduce((acc, item) => acc + item.quantity, 0);
+  const totalItems = cartItems.reduce((acc, item) => acc + item.quantity, 0);
 
-  /* ---------- ORDER SUMMARY (derived from cart) ---------- */
-  const money = (n) => `₹${Number(n || 0).toFixed(2)}`;
-  // const subtotal = cartItems.reduce((s, i) => s + Number(i.price) * i.quantity, 0)
+  /* ---------- ORDER SUMMARY (derived from cart) ---------- */
+  const money = (n) => `₹${Number(n || 0).toFixed(2)}`;
 
-  //const subtotal = cartItems.reduce((s, i) => s + (Number(i.price) - Number(i.discount || 0)) * i.quantity, 0)
+  const isDiscountActive = (item) => {
+    if (!item) return false;
+    const disc = Number(item.discount || 0);
+    if (disc <= 0) return false;
+    if (item.discountExpiry) {
+      const val = item.discountExpiry;
+      let expiry = NaN;
+      if (typeof val === "string") {
+        expiry = new Date(val).getTime();
+        if (isNaN(expiry)) {
+          const cleanStr = val.replace(/(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2})\s+(AM|PM)/i, "$1 $2 $3");
+          expiry = new Date(cleanStr).getTime();
+        }
+      } else if (val?.toDate) {
+        expiry = val.toDate().getTime();
+      } else if (typeof val === "number") {
+        expiry = val;
+      }
+      if (!isNaN(expiry) && Date.now() > expiry) {
+        return false;
+      }
+    }
+    return true;
+  };
 
-  const subtotal = cartItems.reduce((sum, item) => {
-    const price = Number(item.price || 0);
-    const quantity = Number(item.quantity || 0);
-    let discount = Number(item.discount || 0);
-    if (item.discountExpiry) {
-      const expiry = new Date(item.discountExpiry).getTime();
-      if (Date.now() > expiry) discount = 0;
-    }
+  const subtotal = cartItems.reduce((sum, item) => {
+    const price = Number(item.price || 0);
+    const quantity = Number(item.quantity || 0);
+    const discount = isDiscountActive(item) ? Number(item.discount || 0) : 0;
+    const discountedPrice = price - (price * discount) / 100;
 
-    const discountedPrice = price - (price * discount) / 100;
+    return sum + discountedPrice * quantity;
+  }, 0);
 
-    return sum + discountedPrice * quantity;
-  }, 0);
+  // Calculate promo discount dynamically
+  let promoDiscount = 0;
+  if (appliedPromo) {
+    let isExpired = false;
+    if (appliedPromo.expiryDate) {
+      const expiry = new Date(appliedPromo.expiryDate).getTime();
+      if (Date.now() > expiry) {
+        isExpired = true;
+      }
+    }
+    if (!isExpired) {
+      promoDiscount = appliedPromo.type === "percent"
+        ? Math.round((subtotal * Number(appliedPromo.value || 0)) / 100)
+        : Number(appliedPromo.value || 0);
+    }
+  }
 
-  // Calculate promo discount dynamically
-  let promoDiscount = 0;
-  if (appliedPromo) {
-    let isExpired = false;
-    if (appliedPromo.expiryDate) {
-      const expiry = new Date(appliedPromo.expiryDate).getTime();
-      if (Date.now() > expiry) {
-        isExpired = true;
-      }
-    }
-    if (!isExpired) {
-      promoDiscount = appliedPromo.type === "percent"
-        ? Math.round((subtotal * Number(appliedPromo.value || 0)) / 100)
-        : Number(appliedPromo.value || 0);
-    }
-  }
-
-  const shippingEstimate = subtotal >= shippingConfig.freeShippingThreshold ? 0 : shippingConfig.shippingCost;
-  //const estimatedTax = subtotal * 0.08
-  // const orderTotal = Math.max(0, subtotal + shippingEstimate + estimatedTax - promoDiscount)
-  const orderTotal = Math.max(0, subtotal + shippingEstimate - promoDiscount);
-
-  /* ---------- FREQUENTLY BOUGHT TOGETHER (fetched once) ---------- */
+  const shippingEstimate = subtotal >= shippingConfig.freeShippingThreshold ? 0 : shippingConfig.shippingCost;
+  const orderTotal = Math.max(0, subtotal + shippingEstimate - promoDiscount);
   useEffect(() => {
     let active = true;
     (async () => {
@@ -417,39 +430,39 @@ const CartPage = () => {
         promoCode: appliedPromo ? appliedPromo.code : "",
       });
 
-      dispatch(clearCart());
-      toast.success("Order placed successfully with Cash on Delivery!", {
-        position: "bottom-right",
-        autoClose: 4000,
-        theme: "dark",
-      });
-      navigate("/userorders");
-    } catch (err) {
-      console.error("COD Order Error:", err);
-      toast.error(err.message || "Could not place order.");
-    } finally {
-      setIsProcessing(false);
-    }
-  };
+      dispatch(clearCart());
+      toast.success("Order placed successfully with Cash on Delivery!", {
+        position: "bottom-right",
+        autoClose: 4000,
+        theme: "dark",
+      });
+      navigate("/userorders");
+    } catch (err) {
+      console.error("COD Order Error:", err);
+      toast.error(err.message || "Could not place order.");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
-  const sendOrderToWhatsApp = async () => {
-    try {
-      setShowPaymentModal(false);
-      setIsProcessing(true);
+  const sendOrderToWhatsApp = async () => {
+    try {
+      setShowPaymentModal(false);
+      setIsProcessing(true);
 
-      const user = auth.currentUser;
-      let userData = {};
-      if (user) {
-        try {
-          const userRef = doc(fireDB, "users", user.uid);
-          const userSnap = await getDoc(userRef);
-          if (userSnap.exists()) {
-            userData = userSnap.data();
-          }
-        } catch (e) {
-          console.log("Error fetching user data from Firestore:", e);
-        }
-      }
+      const user = auth.currentUser;
+      let userData = {};
+      if (user) {
+        try {
+          const userRef = doc(fireDB, "users", user.uid);
+          const userSnap = await getDoc(userRef);
+          if (userSnap.exists()) {
+            userData = userSnap.data();
+          }
+        } catch (e) {
+          console.log("Error fetching user data from Firestore:", e);
+        }
+      }
 
       const customerName = userData.name || user?.displayName || "";
       const customerEmail = userData.email || user?.email || "";
@@ -457,20 +470,16 @@ const CartPage = () => {
       const customerID = userData.uid || user?.uid || "";
 
       let itemsStr = "";
-      cartItems.forEach((item, index) => {
-        const mrp = Number(item.price || 0);
-        let discount = Number(item.discount || 0);
-        if (item.discountExpiry) {
-          const expiry = new Date(item.discountExpiry).getTime();
-          if (Date.now() > expiry) discount = 0;
-        }
-        const discountedPrice = Number((mrp - (mrp * discount) / 100).toFixed(2));
-        if (discount > 0) {
-          itemsStr += `${index + 1}. ${item.title}\n Quantity: ${item.quantity}\n MRP: ${money(mrp)}\n Discount: ${discount}%\n Discounted Price: ${money(discountedPrice)}\n\n`;
-        } else {
-          itemsStr += `${index + 1}. ${item.title}\n Quantity: ${item.quantity}\n MRP: ${money(mrp)}\n Discounted Price: ${money(mrp)}\n\n`;
-        }
-      });
+      cartItems.forEach((item, index) => {
+        const mrp = Number(item.price || 0);
+        const discount = isDiscountActive(item) ? Number(item.discount || 0) : 0;
+        const discountedPrice = Number((mrp - (mrp * discount) / 100).toFixed(2));
+        if (discount > 0) {
+          itemsStr += `${index + 1}. ${item.title}\n Quantity: ${item.quantity}\n MRP: ${money(mrp)}\n Discount: ${discount}%\n Discounted Price: ${money(discountedPrice)}\n\n`;
+        } else {
+          itemsStr += `${index + 1}. ${item.title}\n Quantity: ${item.quantity}\n MRP: ${money(mrp)}\n Discounted Price: ${money(mrp)}\n\n`;
+        }
+      });
 
       const totalItems = cartItems.reduce(
         (acc, item) => acc + item.quantity,
@@ -821,18 +830,14 @@ Thank you.`;
                           </button>
                         </div>
                         {/* <span style={{ color: "var(--color-ink)", fontWeight: 700, fontSize: "16px" }}>${Number(item.price * item.quantity).toFixed(2)}</span> */}
-                        {(() => {
-                          const price = Number(item.price);
-                          const qty = Number(item.quantity);
-                          let discount = Number(item.discount || 0);
-                          if (item.discountExpiry) {
-                            const expiry = new Date(item.discountExpiry).getTime();
-                            if (Date.now() > expiry) discount = 0;
-                          }
+                        {(() => {
+                          const price = Number(item.price);
+                          const qty = Number(item.quantity);
+                          const discount = isDiscountActive(item) ? Number(item.discount || 0) : 0;
 
-                          const originalTotal = price * qty;
-                          const discountedTotal =
-                            originalTotal - (originalTotal * discount) / 100;
+                          const originalTotal = price * qty;
+                          const discountedTotal =
+                            originalTotal - (originalTotal * discount) / 100;
 
                           return discount > 0 ? (
                             <div className="flex flex-col items-end">
@@ -1165,18 +1170,14 @@ Thank you.`;
                               </span>
                             )}
                           </div>
-                          {(() => {
-                            const price = Number(item.price);
-                            const qty = Number(item.quantity);
-                            let discount = Number(item.discount || 0);
-                            if (item.discountExpiry) {
-                              const expiry = new Date(item.discountExpiry).getTime();
-                              if (Date.now() > expiry) discount = 0;
-                            }
+                          {(() => {
+                            const price = Number(item.price);
+                            const qty = Number(item.quantity);
+                            const discount = isDiscountActive(item) ? Number(item.discount || 0) : 0;
 
-                            const originalTotal = price * qty;
-                            const discountedTotal =
-                              originalTotal - (originalTotal * discount) / 100;
+                            const originalTotal = price * qty;
+                            const discountedTotal =
+                              originalTotal - (originalTotal * discount) / 100;
 
                             return discount > 0 ? (
                               <div className="flex flex-col items-end">

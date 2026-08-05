@@ -288,57 +288,73 @@ router.post("/manual-create", async (req, res) => {
         errors.push(
           `Ambiguous product title "${item.title}". Matches: ${matches.map((p) => p.title).join(", ")}`
         );
-      } else {
-        const p = matches[0];
-        // SERVER-AUTHORITATIVE pricing: always price from the live catalog.
-        // The pasted WhatsApp message is treated as a hint only — a customer
-        // can freely edit the wa.me text, so its prices must never be trusted.
-        const catalogPrice    = Number(p.price)    || 0;
-        const catalogDiscount = Number(p.discount) || 0;
-        const finalPrice      = catalogPrice - (catalogPrice * catalogDiscount) / 100;
+      } else {
+        const p = matches[0];
+        const catalogPrice = Number(p.price) || 0;
+        const rawProductDiscount = Number(p.discount || 0);
+        const categoryDiscount = Number(p.categoryDiscount || 0);
 
-        resolvedItems.push({
-          productId:     p.id,
-          title:         p.title,
-          category:      p.category || "general",
-          quantity:      item.quantity,
-          originalPrice: catalogPrice,
-          discount:      catalogDiscount,
-          finalPrice,
-          gstRate:       Number(p.gstRate || 0),
-          hsnCode:       p.hsnCode || "",
-        });
-      }
-    }
+        // Respect discountExpiry on the server — same logic as the frontend
+        // isDiscountActive(). If the product discount has expired, treat it as 0.
+        let productDiscount = rawProductDiscount;
+        if (rawProductDiscount > 0 && p.discountExpiry) {
+          const expiryMs = new Date(p.discountExpiry).getTime();
+          if (!isNaN(expiryMs) && Date.now() > expiryMs) {
+            productDiscount = 0; // discount expired → no product-level discount
+          }
+        }
 
-    if (errors.length) {
-      return res.status(400).json({ success: false, error: errors.join("\n") });
-    }
+        const catalogDiscount = Math.max(productDiscount, categoryDiscount);
+        const catalogFinalPrice = catalogPrice - (catalogPrice * catalogDiscount) / 100;
 
-    // ── 3b. Price integrity check ─────────────────────────────────────────
-    // Recompute the total from the catalog-priced line items. Shipping/promo
-    // are admin-entered fields from the message. If the pasted "Total Amount"
-    // disagrees beyond tolerance, refuse unless the admin explicitly overrides
-    // (negotiated price) — never silently trust the customer-editable message.
-    const serverSubtotal  = Math.round(resolvedItems.reduce((s, it) => s + it.finalPrice * it.quantity, 0) * 100) / 100;
-    const msgShipping     = Number(parsed.shipping)      || 0;
-    const msgPromoDiscount= Number(parsed.promoDiscount) || 0;
-    const serverTotal     = Math.max(0, Math.round(serverSubtotal + msgShipping - msgPromoDiscount));
-    const pastedTotal     = Math.round(Number(parsed.totalAmount) || 0);
-    const priceMismatch   = Math.abs(serverTotal - pastedTotal) > PRICE_TOLERANCE;
+        // Extract WhatsApp unit price from parsed item (if provided)
+        const waUnitPrice = Number(item.discountedPrice) > 0 ? Number(item.discountedPrice) : catalogFinalPrice;
 
-    if (priceMismatch && !allowPriceOverride) {
-      return res.status(409).json({
-        success: false,
-        code: "PRICE_MISMATCH",
-        error: `The pasted total (₹${pastedTotal}) does not match the catalog total (₹${serverTotal}). Review the order and re-submit with confirmation to override.`,
-        serverTotal,
-        pastedTotal,
-      });
-    }
-    // Not overriding → record the authoritative catalog total. Overriding →
-    // record the admin-agreed pasted total, flagged for audit.
-    const recordedTotal = priceMismatch ? pastedTotal : serverTotal;
+        // If allowPriceOverride is confirmed by admin, use the WhatsApp line item price; otherwise evaluate catalog price
+        const finalPrice = allowPriceOverride ? waUnitPrice : catalogFinalPrice;
+
+        resolvedItems.push({
+          productId:     p.id,
+          title:         p.title,
+          category:      p.category || "general",
+          quantity:      item.quantity,
+          originalPrice: allowPriceOverride ? (item.mrp || catalogPrice) : catalogPrice,
+          discount:      allowPriceOverride ? (item.discountPct || 0) : catalogDiscount,
+          finalPrice,
+          gstRate:       Number(p.gstRate || 0),
+          hsnCode:       p.hsnCode || "",
+        });
+      }
+    }
+
+    if (errors.length) {
+      return res.status(400).json({ success: false, error: errors.join("\n") });
+    }
+
+    // ── 3b. Price integrity check ─────────────────────────────────────────
+    // Recompute the total from the catalog-priced line items. Shipping/promo
+    // are admin-entered fields from the message. If the pasted "Total Amount"
+    // disagrees beyond tolerance, refuse unless the admin explicitly overrides
+    // (negotiated price) — never silently trust the customer-editable message.
+    const serverSubtotal   = Math.round(resolvedItems.reduce((s, it) => s + it.finalPrice * it.quantity, 0) * 100) / 100;
+    const msgShipping      = Number(parsed.shipping)      || 0;
+    const msgPromoDiscount = Number(parsed.promoDiscount) || 0;
+    const serverTotal      = Math.max(0, Math.round(serverSubtotal + msgShipping - msgPromoDiscount));
+    const pastedTotal      = Math.round(Number(parsed.totalAmount) || 0);
+    const priceMismatch    = Math.abs(serverTotal - pastedTotal) > PRICE_TOLERANCE;
+
+    if (priceMismatch && !allowPriceOverride) {
+      return res.status(409).json({
+        success: false,
+        code: "PRICE_MISMATCH",
+        error: `The pasted total (₹${pastedTotal}) does not match the catalog total (₹${serverTotal}). Review the order and re-submit with confirmation to override.`,
+        serverTotal,
+        pastedTotal,
+      });
+    }
+    // Not overriding → record the authoritative catalog total. Overriding →
+    // record the admin-agreed pasted total, flagged for audit.
+    const recordedTotal = priceMismatch ? pastedTotal : serverTotal;
 
     // Seller state for the GST CGST/SGST-vs-IGST split (read before the tx).
     const sellerState = await getSellerState();

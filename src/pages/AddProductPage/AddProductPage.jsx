@@ -115,156 +115,200 @@ const AddProductPage = () => {
         const q = search.toLowerCase()
         return products.filter((p) => {
             const matchesSearch = !q || p.title?.toLowerCase().includes(q) || p.sku?.toLowerCase().includes(q) || p.category?.toLowerCase().includes(q)
-            const matchesCategory = categoryFilter === "all" || p.category === categoryFilter
-            const pStatus = p.status === "draft" ? "draft" : "active"
-            const matchesStatus = statusFilter === "all" || pStatus === statusFilter
-            return matchesSearch && matchesCategory && matchesStatus
-        })
-    }, [products, search, categoryFilter, statusFilter])
+            const matchesCategory = categoryFilter === "all" || p.category === categoryFilter
+            const pStatus = p.status === "draft" ? "draft" : "active"
+            const matchesStatus = statusFilter === "all" || pStatus === statusFilter
+            return matchesSearch && matchesCategory && matchesStatus
+        })
+    }, [products, search, categoryFilter, statusFilter])
 
-    const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
-    const pageItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
-    useEffect(() => { if (page > totalPages) setPage(1) }, [totalPages, page])
+    const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+    const pageItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+    useEffect(() => { if (page > totalPages) setPage(1) }, [totalPages, page])
 
-    /* ---------------- FORM HANDLERS ---------------- */
-    const onField = (e) => setForm((f) => ({ ...f, [e.target.name]: e.target.value }))
+    /* ---------------- FORM HANDLERS ---------------- */
+    const onField = (e) => setForm((f) => ({ ...f, [e.target.name]: e.target.value }))
 
-    const onThumb = (e) => {
-        const file = e.target.files[0]
-        if (!file) return
-        const v = validateImageFile(file)
-        if (!v.ok) { alert(v.error); e.target.value = ""; return }
-        setThumbFile(file)
-        setThumbPreview(URL.createObjectURL(file))
-    }
-    const onGallery = (e) => {
-        const files = [...e.target.files]
-        const v = validateImageFiles(files)
-        if (!v.ok) { alert(v.error); e.target.value = ""; return }
-        setGalleryFiles(files)
-        setGalleryPreviews(files.map((f) => URL.createObjectURL(f)))
-    }
-    const clearForm = () => {
-        setForm(EMPTY_FORM); setStatus("active"); setAddingCategory(false)
-        setThumbFile(null); setThumbPreview(""); setGalleryFiles([]); setGalleryPreviews([])
-        setUploadProgress(0)
-    }
+    const onThumb = (e) => {
+        const file = e.target.files[0]
+        if (!file) return
+        const v = validateImageFile(file)
+        if (!v.ok) { alert(v.error); e.target.value = ""; return }
+        setThumbFile(file)
+        setThumbPreview(URL.createObjectURL(file))
+    }
+    const onGallery = (e) => {
+        const files = [...e.target.files]
+        const v = validateImageFiles(files)
+        if (!v.ok) { alert(v.error); e.target.value = ""; return }
+        setGalleryFiles(files)
+        setGalleryPreviews(files.map((f) => URL.createObjectURL(f)))
+    }
+    const clearForm = () => {
+        setForm(EMPTY_FORM); setStatus("active"); setAddingCategory(false)
+        setThumbFile(null); setThumbPreview(""); setGalleryFiles([]); setGalleryPreviews([])
+        setUploadProgress(0)
+    }
 
-    const saveProduct = async (saveStatus) => {
-        if (!form.title || !form.price || !form.category) return alert("Title, Price and Category are required")
-        if (!thumbFile && !thumbPreview) return alert("Primary image is required")
-        setLoading(true); setUploadProgress(5)
-        try {
-            const productId = `prod_${Date.now()}`
-            let thumbUrl = ""
-            if (thumbFile) {
-                const tRef = ref(storage, `products/${productId}/thumbnail/${thumbFile.name}`)
-                await uploadBytes(tRef, thumbFile)
-                thumbUrl = await getDownloadURL(tRef)
-            }
-            setUploadProgress(25)
-            const galleryUrls = []
-            for (let i = 0; i < galleryFiles.length; i++) {
-                const gRef = ref(storage, `products/${productId}/gallery/${galleryFiles[i].name}`)
-                await uploadBytes(gRef, galleryFiles[i])
-                galleryUrls.push(await getDownloadURL(gRef))
-                setUploadProgress(25 + Math.round(((i + 1) / galleryFiles.length) * 70))
-            }
-            setUploadProgress(100)
-            await addDoc(collection(fireDB, "products"), {
-                title: form.title,
-                category: form.category || "general",
-                price: Number(form.price) || 0,
-                stock: Number(form.stock) || 0,
-                brand: form.brand || "",
-                sku: form.sku || "",
-                gstRate: Number(form.gstRate) || 0,
-                hsnCode: form.hsnCode || "",
-                priceType: "inclusive",
-                shortDescription: form.shortDescription || "",
-                description: form.description || "",
-                thumbnail: thumbUrl,
-                gallery: galleryUrls,
-                status: saveStatus,
-                createdAt: serverTimestamp(),
-                productId,
-            })
-            alert(`Product ${saveStatus === "draft" ? "saved as draft" : "saved"} successfully`)
-            clearForm()
-        } catch (err) {
-            console.error(err)
-            alert("Error saving product")
-        } finally {
-            setLoading(false)
-        }
-    }
+    const saveProduct = async (saveStatus) => {
+        if (!form.title || !form.price || !form.category) return alert("Title, Price and Category are required")
+        if (!thumbFile && !thumbPreview) return alert("Primary image is required")
+        setLoading(true); setUploadProgress(5)
+        try {
+            const productId = `prod_${Date.now()}`
+            let thumbUrl = ""
+            if (thumbFile) {
+                const tRef = ref(storage, `products/${productId}/thumbnail/${thumbFile.name}`)
+                await uploadBytes(tRef, thumbFile)
+                thumbUrl = await getDownloadURL(tRef)
+            }
+            setUploadProgress(25)
+            const galleryUrls = []
+            for (let i = 0; i < galleryFiles.length; i++) {
+                const gRef = ref(storage, `products/${productId}/gallery/${galleryFiles[i].name}`)
+                await uploadBytes(gRef, galleryFiles[i])
+                galleryUrls.push(await getDownloadURL(gRef))
+                setUploadProgress(25 + Math.round(((i + 1) / galleryFiles.length) * 70))
+            }
+            setUploadProgress(100)
+            await addDoc(collection(fireDB, "products"), {
+                title: form.title,
+                category: form.category || "general",
+                price: Number(form.price) || 0,
+                stock: Number(form.stock) || 0,
+                brand: form.brand || "",
+                sku: form.sku || "",
+                gstRate: Number(form.gstRate) || 0,
+                hsnCode: form.hsnCode || "",
+                priceType: "inclusive",
+                shortDescription: form.shortDescription || "",
+                description: form.description || "",
+                thumbnail: thumbUrl,
+                gallery: galleryUrls,
+                status: saveStatus,
+                createdAt: serverTimestamp(),
+                productId,
+            })
+            alert(`Product ${saveStatus === "draft" ? "saved as draft" : "saved"} successfully`)
+            clearForm()
+        } catch (err) {
+            console.error(err)
+            alert("Error saving product")
+        } finally {
+            setLoading(false)
+        }
+    }
 
-    /* ---------------- CSV ---------------- */
-    const downloadSampleCsv = () => {
-        const csv = Papa.unparse({ fields: PRODUCT_IMPORT_HEADERS, data: [PRODUCT_IMPORT_SAMPLE_ROW] })
-        const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement("a")
-        a.href = url
-        a.download = "product-import-sample.csv"
-        document.body.appendChild(a)
-        a.click()
-        document.body.removeChild(a)
-        URL.revokeObjectURL(url)
-    }
-    const onCsv = (file) => {
-        if (!file) return
-        setCsvName(file.name)
-        Papa.parse(file, {
-            header: true, skipEmptyLines: true,
-            complete: (res) => {
-                const rows = res.data.map((r) => {
-                    const title = r.title || r.name || ""
-                    const price = r.price
-                    const category = r.category || ""
-                    let error = ""
-                    if (!title) error = "Missing Title"
-                    else if (price === undefined || price === "" || isNaN(Number(price))) error = "Missing Price"
-                    else if (!category) error = "Missing Category"
-                    return { raw: r, sku: r.sku || r.SKU || "—", title, price, category, valid: !error, error }
-                })
-                setCsvRows(rows)
-            },
-        })
-    }
-    const startBatchUpload = async () => {
-        const valid = csvRows.filter((r) => r.valid)
-        if (valid.length === 0) return alert("No valid rows to upload")
-        setLoading(true)
-        try {
-            for (const r of valid) {
-                await addDoc(collection(fireDB, "products"), {
-                    title: r.title,
-                    category: r.category || "general",
-                    price: Number(r.price) || 0,
-                    stock: Number(r.raw.stock) || 0,
-                    brand: r.raw.brand || "",
-                    sku: r.sku === "—" ? "" : r.sku,
-                    gstRate: Number(r.raw.gstRate || r.raw.gst || 0),
-                    hsnCode: r.raw.hsnCode || r.raw.hsn || "",
-                    priceType: "inclusive",
-                    shortDescription: r.raw.shortDescription || "",
-                    description: r.raw.description || "",
-                    thumbnail: r.raw.image || r.raw.thumbnail || "",
-                    gallery: [],
-                    status: "active",
-                    createdAt: serverTimestamp(),
-                    productId: `prod_${Date.now()}_${Math.round(Number(r.price))}`,
-                })
-            }
-            alert(`Uploaded ${valid.length} products`)
-            setCsvRows([]); setCsvName("")
-        } catch (err) {
-            console.error(err); alert("Batch upload failed")
-        } finally {
-            setLoading(false)
-        }
-    }
+    /* Helper to safely retrieve CSV fields with key normalization & alias matching */
+    const getCsvVal = (row, ...aliases) => {
+        if (!row) return undefined
+        const keys = Object.keys(row)
+        for (const alias of aliases) {
+            const cleanAlias = alias.toLowerCase().replace(/[^a-z0-9]/g, "")
+            for (const key of keys) {
+                if (key.trim().toLowerCase().replace(/[^a-z0-9]/g, "") === cleanAlias) {
+                    return row[key]
+                }
+            }
+        }
+        return undefined
+    }
+
+    /* Helper to safely parse numeric fields, stripping %, currency symbols, and extra spaces */
+    const parseCsvNumber = (val, fallback = 0) => {
+        if (val == null || val === "") return fallback
+        if (typeof val === "number") return isNaN(val) ? fallback : val
+        const cleaned = String(val).replace(/[^0-9.-]/g, "").trim()
+        const num = Number(cleaned)
+        return isNaN(num) ? fallback : num
+    }
+
+    /* ---------------- CSV ---------------- */
+    const downloadSampleCsv = () => {
+        const csv = Papa.unparse({ fields: PRODUCT_IMPORT_HEADERS, data: [PRODUCT_IMPORT_SAMPLE_ROW] })
+        const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement("a")
+        a.href = url
+        a.download = "product-import-sample.csv"
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+    }
+    const onCsv = (file) => {
+        if (!file) return
+        setCsvName(file.name)
+        Papa.parse(file, {
+            header: true,
+            skipEmptyLines: true,
+            transformHeader: (h) => h.trim(),
+            complete: (res) => {
+                const rows = res.data.map((r) => {
+                    const title = String(getCsvVal(r, "title", "name", "productName") || "").trim()
+                    const rawPrice = getCsvVal(r, "price", "mrp", "unit price", "rate")
+                    const parsedPrice = parseCsvNumber(rawPrice, null)
+                    const category = String(getCsvVal(r, "category", "cat") || "").trim()
+                    const sku = String(getCsvVal(r, "sku", "item code", "product code") || "—").trim()
+                    let error = ""
+                    if (!title) error = "Missing Title"
+                    else if (parsedPrice === null || isNaN(parsedPrice)) error = "Missing Price"
+                    else if (!category) error = "Missing Category"
+                    return {
+                        raw: r,
+                        sku: sku || "—",
+                        title,
+                        price: parsedPrice !== null ? parsedPrice : rawPrice,
+                        category,
+                        valid: !error,
+                        error,
+                    }
+                })
+                setCsvRows(rows)
+            },
+        })
+    }
+    const startBatchUpload = async () => {
+        const valid = csvRows.filter((r) => r.valid)
+        if (valid.length === 0) return alert("No valid rows to upload")
+        setLoading(true)
+        try {
+            for (const r of valid) {
+                const rawGst = getCsvVal(r.raw, "gstRate", "gst", "gst_rate", "gstrate", "gst rate", "gst percent", "gst percentage")
+                const rawHsn = getCsvVal(r.raw, "hsnCode", "hsn", "hsn_code", "hsncode", "hsn code")
+                const rawStock = getCsvVal(r.raw, "stock", "quantity", "qty")
+                const rawBrand = getCsvVal(r.raw, "brand", "company", "manufacturer")
+                const rawShortDesc = getCsvVal(r.raw, "shortDescription", "short_description", "shortDesc", "summary")
+                const rawDesc = getCsvVal(r.raw, "description", "desc", "details")
+                const rawImage = getCsvVal(r.raw, "image", "thumbnail", "img", "imageUrl", "photo")
+
+                await addDoc(collection(fireDB, "products"), {
+                    title: r.title,
+                    category: r.category || "general",
+                    price: parseCsvNumber(r.price, 0),
+                    stock: parseCsvNumber(rawStock, 0),
+                    brand: String(rawBrand || "").trim(),
+                    sku: r.sku === "—" ? "" : r.sku,
+                    gstRate: parseCsvNumber(rawGst, 0),
+                    hsnCode: String(rawHsn || "").trim(),
+                    priceType: "inclusive",
+                    shortDescription: String(rawShortDesc || "").trim(),
+                    description: String(rawDesc || "").trim(),
+                    thumbnail: String(rawImage || "").trim(),
+                    gallery: [],
+                    status: "active",
+                    createdAt: serverTimestamp(),
+                    productId: `prod_${Date.now()}_${Math.round(parseCsvNumber(r.price, 0))}`,
+                })
+            }
+            alert(`Uploaded ${valid.length} products`)
+            setCsvRows([]); setCsvName("")
+        } catch (err) {
+            console.error(err); alert("Batch upload failed")
+        } finally {
+            setLoading(false)
+        }
+    }
 
     /* ---------------- DELETE ---------------- */
     const deleteProduct = async (id, productId) => {
