@@ -6,6 +6,8 @@ import {
   saveInvoiceSettings,
   getShippingSettings,
   saveShippingSettings,
+  getGstSettings,
+  saveGstSettings,
 } from "../services/settingsService";
 import { toast } from "react-toastify";
 
@@ -34,25 +36,29 @@ export const useSettings = () => {
     freeShippingThreshold: 500,
     shippingCost: 49,
   });
+  const [gstSettings, setGstSettings] = useState({ gstEnabled: true });
   const [loading, setLoading] = useState(true);
   const [savingPayment, setSavingPayment] = useState(false);
   const [savingInvoice, setSavingInvoice] = useState(false);
   const [savingShipping, setSavingShipping] = useState(false);
+  const [savingGst, setSavingGst] = useState(false);
 
   useEffect(() => {
     let active = true;
     const loadSettings = async () => {
       try {
         setLoading(true);
-        const [payData, invData, shipData] = await Promise.all([
+        const [payData, invData, shipData, gstData] = await Promise.all([
           getPaymentSettings(),
           getInvoiceSettings(),
           getShippingSettings(),
+          getGstSettings(),
         ]);
         if (active) {
           setPaymentSettings(payData);
           setInvoiceSettings(invData);
           setShippingSettings(shipData);
+          setGstSettings(gstData);
         }
       } catch (error) {
         console.error("Error loading settings:", error);
@@ -121,16 +127,35 @@ export const useSettings = () => {
     }
   };
 
+  const updateGstSettings = async (newGst) => {
+    try {
+      setSavingGst(true);
+      await saveGstSettings(newGst);
+      setGstSettings(newGst);
+      toast.success("GST settings saved successfully");
+      return true;
+    } catch (error) {
+      console.error("Error saving GST settings:", error);
+      toast.error("Failed to save GST settings.");
+      return false;
+    } finally {
+      setSavingGst(false);
+    }
+  };
+
   return {
     paymentSettings,
     invoiceSettings,
     shippingSettings,
+    gstSettings,
     loading,
     savingPayment,
     savingInvoice,
     savingShipping,
+    savingGst,
     updatePaymentSettings,
     updateInvoiceSettings,
     updateShippingSettings,
+    updateGstSettings,
   };
 };

@@ -16,7 +16,7 @@
 const express = require("express");
 const admin   = require("firebase-admin");
 const { requireAuth, isFeatureKilled, isPromoExpired } = require("../lib/util");
-const { writeOrderInTx, applyGstToItems, sumGstTotals, resolveInterState } = require("../lib/orderWriter");
+const { writeOrderInTx, applyGstToItems, sumGstTotals, resolveInterState, getGstEnabled } = require("../lib/orderWriter");
 
 /** Read the seller's state (settings/invoiceSettings.state) for GST split. */
 async function getSellerState() {

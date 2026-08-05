@@ -241,4 +241,12 @@ function writeOrderInTx(fdb, tx, pending, resolved, options = {}) {
   return orderRef.id;
 }
 
-module.exports = { writeOrderInTx, unitGst, applyGstToItems, sumGstTotals, resolveInterState };
+module.exports = { getGstEnabled, writeOrderInTx, unitGst, applyGstToItems, sumGstTotals, resolveInterState };
+async function getGstEnabled(fdb) {
+  try {
+    const snap = await fdb.collection("settings").doc("gstSettings").get();
+    return snap.exists ? (snap.data()?.gstEnabled !== false) : true;
+  } catch (e) {
+    return true;
+  }
+}

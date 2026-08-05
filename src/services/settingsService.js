@@ -108,3 +108,29 @@ export const saveShippingSettings = async (settings) => {
     updatedAt: serverTimestamp(),
   }, { merge: true });
 };
+
+/**
+ * Reads GST settings from settings/gstSettings document.
+ * Defaults to { gstEnabled: true } so existing behaviour is preserved
+ * for stores that have never touched this setting.
+ */
+export const getGstSettings = async () => {
+  const docRef = doc(fireDB, "settings", "gstSettings");
+  const docSnap = await getDoc(docRef);
+  if (docSnap.exists()) {
+    const data = docSnap.data();
+    return { gstEnabled: data.gstEnabled !== false }; // default true
+  }
+  return { gstEnabled: true };
+};
+
+/**
+ * Saves GST settings to settings/gstSettings document in Firestore.
+ */
+export const saveGstSettings = async (settings) => {
+  const docRef = doc(fireDB, "settings", "gstSettings");
+  await setDoc(docRef, {
+    gstEnabled: settings.gstEnabled !== false,
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
+};

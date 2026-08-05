@@ -16,7 +16,7 @@ const crypto = require("crypto");
 const Razorpay = require("razorpay");
 const admin = require("firebase-admin");
 const { requireAuth, rateLimit, globalDailyLimit, isFeatureKilled, isUserBlocked, isPromoExpired } = require("../lib/util");
-const { writeOrderInTx, applyGstToItems, sumGstTotals, resolveInterState } = require("../lib/orderWriter");
+const { writeOrderInTx, applyGstToItems, sumGstTotals, resolveInterState, getGstEnabled } = require("../lib/orderWriter");
 
 // Hard ceiling on Razorpay order creations per UTC day, across ALL users, so a
 // worst-case abuse scenario is bounded no matter how many accounts are rotated.

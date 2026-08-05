@@ -12,7 +12,7 @@ import {
 
 import { fireDB } from "../../context/FirebaseConfig"
 import { generateInvoice } from "../../utils/generateInvoice"
-import { paymentMethodLabel, paymentStatusLabel, isCodPending } from "../../utils/paymentLabels"
+import { paymentMethodLabel, paymentStatusLabel, isCodPending, isPendingPayment } from "../../utils/paymentLabels"
 import SearchBar from "../../components/SearchBar"
 import PaginatedOrderTable from "../../features/orders/PaginatedOrderTable"
 import useIsMobile from "../../hooks/useIsMobile"
@@ -356,7 +356,7 @@ const AdminOrdersPage = () => {
           </button>
         )}
         */}
-        {isCodPending(order) && column === "delivered" && (
+        {isPendingPayment(order) && column === "delivered" && (
           <button
             onClick={(e) => { e.stopPropagation(); markAsPaid(order.id) }}
             className="w-full flex items-center justify-center gap-2 text-inverse"
@@ -532,7 +532,7 @@ const AdminOrdersPage = () => {
                 </button>
               )}
               */}
-              {isCodPending(o) && activeTab === "delivered" && (
+              {isPendingPayment(o) && activeTab === "delivered" && (
                 <button
                   onClick={() => markAsPaid(o.id)}
                   className="flex items-center gap-2"
@@ -581,10 +581,10 @@ const AdminOrdersPage = () => {
           <div style={{ paddingTop: "32px" }}>
             <h3 style={{ fontFamily: INTER, fontWeight: 700, fontSize: "18px", color: "var(--color-ink)", marginBottom: "16px" }}>Price Summary</h3>
             <div className="flex flex-col" style={{ gap: "8px", fontFamily: INTER, fontSize: "14px" }}>
-              {o.taxableTotal != null && (
+              {o.gstEnabled !== false && o.taxableTotal != null && (
                 <div className="flex justify-between"><span style={{ color: "var(--color-body)" }}>Taxable Value</span><span style={{ fontWeight: 600, color: "var(--color-ink)" }}>{formatINR(o.taxableTotal)}</span></div>
               )}
-              {o.taxableTotal != null && (o.isInterState ? (
+              {o.gstEnabled !== false && o.taxableTotal != null && (o.isInterState ? (
                 <div className="flex justify-between"><span style={{ color: "var(--color-body)" }}>IGST</span><span style={{ fontWeight: 600, color: "var(--color-ink)" }}>{formatINR(o.totalIgst)}</span></div>
               ) : (
                 <>
@@ -606,13 +606,25 @@ const AdminOrdersPage = () => {
           </div>
 
           {/* Bottom actions */}
-          <div className="flex gap-4" style={{ paddingTop: "32px", borderTop: "1px solid var(--color-border)" }}>
-            <button onClick={() => downloadInvoice(o)} className="flex items-center justify-center gap-2 text-inverse flex-1" style={{ background: "var(--color-primary)", borderRadius: "24px", height: "64px", fontFamily: INTER, fontWeight: 700, fontSize: "16px" }}>
-              <Download size={18} /> Download Invoice
-            </button>
-            <button onClick={() => window.print()} className="flex items-center justify-center flex-shrink-0" style={{ width: "64px", height: "64px", borderRadius: "24px", border: "2px solid var(--color-border)" }}>
-              <Printer size={20} style={{ color: "var(--color-body)" }} />
-            </button>
+          <div className="flex flex-col gap-3" style={{ paddingTop: "32px", borderTop: "1px solid var(--color-border)" }}>
+            {/* Mark as Paid — shown for COD and WhatsApp orders with pending payment */}
+            {isPendingPayment(o) && (
+              <button
+                onClick={() => markAsPaid(o.id)}
+                className="w-full flex items-center justify-center gap-2 text-inverse"
+                style={{ background: "var(--color-primary)", borderRadius: "24px", height: "56px", fontFamily: INTER, fontWeight: 700, fontSize: "16px", boxShadow: "0px 4px 12px rgba(0,0,0,0.15)" }}
+              >
+                <Banknote size={18} /> Mark Payment as Paid
+              </button>
+            )}
+            <div className="flex gap-4">
+              <button onClick={() => downloadInvoice(o)} className="flex items-center justify-center gap-2 text-inverse flex-1" style={{ background: "var(--color-primary)", borderRadius: "24px", height: "64px", fontFamily: INTER, fontWeight: 700, fontSize: "16px" }}>
+                <Download size={18} /> Download Invoice
+              </button>
+              <button onClick={() => window.print()} className="flex items-center justify-center flex-shrink-0" style={{ width: "64px", height: "64px", borderRadius: "24px", border: "2px solid var(--color-border)" }}>
+                <Printer size={20} style={{ color: "var(--color-body)" }} />
+              </button>
+            </div>
           </div>
         </div>
       </div>

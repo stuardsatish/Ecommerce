@@ -19,8 +19,12 @@ export const paymentMethodLabel = (method) => {
  */
 export const paymentStatusLabel = (status, method) => {
   const s = String(status || "").toLowerCase()
-  const isCod = String(method || "").toLowerCase() === "cod"
-  if (s === "pending") return isCod ? "Pending (Pay on Delivery)" : "Pending"
+  const m = String(method || "").toLowerCase()
+  if (s === "pending") {
+    if (m === "cod") return "Pending (Pay on Delivery)"
+    if (m === "whatsapp") return "Pending (WhatsApp)"
+    return "Pending"
+  }
   if (s === "paid") return "Paid"
   return status || "N/A"
 }
@@ -29,3 +33,14 @@ export const paymentStatusLabel = (status, method) => {
 export const isCodPending = (order) =>
   String(order?.paymentMethod || "").toLowerCase() === "cod" &&
   String(order?.paymentStatus || "").toLowerCase() === "pending"
+
+/**
+ * True when the order was paid via COD or WhatsApp and payment is still
+ * pending — i.e. the admin needs to manually collect / confirm cash or
+ * WhatsApp payment and then mark it as paid.
+ */
+export const isPendingPayment = (order) => {
+  const method = String(order?.paymentMethod || "").toLowerCase()
+  const status = String(order?.paymentStatus || "").toLowerCase()
+  return (method === "cod" || method === "whatsapp") && status === "pending"
+}

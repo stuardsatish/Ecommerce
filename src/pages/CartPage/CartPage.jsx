@@ -62,14 +62,16 @@ const CartPage = () => {
     shippingCost: 49,
   });
   const [settingsLoading, setSettingsLoading] = useState(true);
+  const [gstEnabled, setGstEnabled] = useState(true);
 
   useEffect(() => {
     let active = true;
     const fetchSettings = async () => {
       try {
-        const [paySnap, shipSnap] = await Promise.all([
+        const [paySnap, shipSnap, gstSnap] = await Promise.all([
           getDoc(doc(fireDB, "settings", "paymentSettings")),
           getDoc(doc(fireDB, "settings", "shippingSettings")),
+          getDoc(doc(fireDB, "settings", "gstSettings")),
         ]);
         if (active) {
           if (paySnap.exists()) {
@@ -83,6 +85,9 @@ const CartPage = () => {
               freeShippingThreshold: typeof sd.freeShippingThreshold === "number" ? sd.freeShippingThreshold : 500,
               shippingCost: typeof sd.shippingCost === "number" ? sd.shippingCost : 49,
             });
+          }
+          if (gstSnap.exists()) {
+            setGstEnabled(gstSnap.data().gstEnabled !== false);
           }
         }
       } catch (error) {

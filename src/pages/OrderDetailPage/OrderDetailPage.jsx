@@ -121,7 +121,7 @@ const OrderDetailPage = () => {
   const itemsTotal = order.subtotal != null ? Number(order.subtotal) : computedItems
   const shipping = order.shipping != null ? Number(order.shipping) : Math.max(0, Number(order.total || 0) - itemsTotal)
   // GST is included in the item prices; show the breakdown when the order stored it.
-  const hasGst = order.taxableTotal != null
+  const hasGst = order.gstEnabled !== false && order.taxableTotal != null
   const isInterState = !!order.isInterState
   const totalCgst = Number(order.totalCgst || 0)
   const totalSgst = Number(order.totalSgst || 0)
