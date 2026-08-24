@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react"
 import { useDispatch, useSelector } from "react-redux"
-import { signOut } from "firebase/auth"
-import { auth } from "../context/FirebaseConfig"
+import { supabase } from "../context/SupabaseConfig"
 import { clearUser } from "../context/UserSlice"
 import { clearCart } from "../context/CartSlice"
 import { getChannel, setSession, clearSession, broadcastAuth } from "../utils/sessionUtils"
@@ -41,7 +40,7 @@ export default function SessionManager() {
         // Another tab logged out → tear down here too.
         clearSession()
         dispatch(clearUser())
-        signOut(auth).catch(() => {})
+        supabase.auth.signOut().catch(() => {})
       } else if (type === "who") {
         // A new tab is probing for an existing session — answer if authenticated.
         if (userRef.current) {

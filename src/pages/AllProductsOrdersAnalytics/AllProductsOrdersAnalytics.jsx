@@ -1,6 +1,5 @@
 import { useEffect, useState, useMemo, useRef } from "react"
-import { collection, getDocs } from "firebase/firestore"
-import { fireDB } from "../../context/FirebaseConfig"
+import { supabase } from "../../context/SupabaseConfig"
 import gsap from "gsap"
 import { useGSAP } from "@gsap/react"
 import {
@@ -192,22 +191,42 @@ const AllProductsOrdersAnalytics = () => {
             const activeIds = new Set()
             const userPeriod = {} // uid -> { cur, prev } for customer counts
 
-            // Single source of truth: top-level `orders` collection (same place
-            // cart checkout, the Excel restore and the seeder all write to).
-            const ordersSnap = await getDocs(collection(fireDB, "orders"))
-            ordersSnap.forEach((orderDoc) => {
-                const order = orderDoc.data()
-                const d = toDate(order.createdAt)
+            // Fetch catalog first so items loop can look up category by product id
+            // (order_items does not carry a category column in Supabase).
+            let catalogById = {}
+            try {
+                const { data: catalogRows, error: catalogErr } = await supabase.from("products").select("*")
+                if (catalogErr) throw catalogErr
+                catalogRows.forEach((x) => {
+                    catalogById[x.id] = {
+                        id: x.id,
+                        title: x.title || "Product",
+                        category: x.category || "Uncategorized",
+                        image: productImage(x),
+                        price: Number(x.price || 0),
+                        rating: Number(x.rating) || 0,
+                        stock: Number(x.stock || 0),
+                    }
+                })
+            } catch (e) { console.log("catalog fetch", e) }
+
+            const { data: orderRows, error: ordersErr } = await supabase
+                .from("orders")
+                .select("id, user_id, total, created_at, order_items(product_id, title, quantity, unit_price, line_total)")
+            if (ordersErr) throw ordersErr
+
+            ;(orderRows || []).forEach((order) => {
+                const d = toDate(order.created_at)
                 if (!d) return
                 const inCur = d >= startDate && d <= endDate
                 const inPrev = !inCur && d >= prevStart && d < startDate
                 if (!inCur && !inPrev) return
 
-                const uid = order.userId || "unknown"
+                const uid = order.user_id || "unknown"
                 if (!userPeriod[uid]) userPeriod[uid] = { cur: 0, prev: 0 }
 
                 const total = Number(order.total || 0)
-                const items = order.products || order.cartItems || order.items || []
+                const items = order.order_items || []
 
                 if (inCur) {
                     userPeriod[uid].cur++
@@ -224,25 +243,25 @@ const AllProductsOrdersAnalytics = () => {
                 }
 
                 items.forEach((p) => {
-                    const pid = p.productId || p.id || p.title || p.name || "unknown"
-                    const title = p.title || p.name || p.productTitle || "Unknown Product"
-                    const price = Number(p.price || 0)
+                    const pid = p.product_id || p.productId || p.title || "unknown"
+                    const title = p.title || "Unknown Product"
+                    const price = Number(p.unit_price || 0)
                     const qty = Number(p.quantity || 1)
-                    const category = p.category || "Uncategorized"
+                    const category = catalogById[pid]?.category || "Uncategorized"
                     const lineRev = price * qty
 
                     if (inCur) {
                         totalUnits += qty
                         activeIds.add(pid)
-                        if (!productMap[pid]) productMap[pid] = { id: pid, title, revenue: 0, orders: 0, units: 0, category, image: productImage(p), price, rating: Number(p.rating) || 0 }
+                        if (!productMap[pid]) productMap[pid] = { id: pid, title, revenue: 0, orders: 0, units: 0, category, image: catalogById[pid]?.image || "", price, rating: catalogById[pid]?.rating || 0 }
                         productMap[pid].revenue += lineRev
                         productMap[pid].orders++
                         productMap[pid].units += qty
-                        if (!productMap[pid].image) productMap[pid].image = productImage(p)
+                        if (!productMap[pid].image) productMap[pid].image = catalogById[pid]?.image || ""
 
                         if (!categoryMap[category]) categoryMap[category] = { name: category, revenue: 0, ordersSet: new Set(), products: new Set() }
                         categoryMap[category].revenue += lineRev
-                        categoryMap[category].ordersSet.add(orderDoc.id) // distinct orders, not line items
+                        categoryMap[category].ordersSet.add(order.id)
                         categoryMap[category].products.add(pid)
                     } else {
                         prevUnits += qty
@@ -260,24 +279,6 @@ const AllProductsOrdersAnalytics = () => {
                 if (v.cur > 0) customersWithOrders++
                 if (v.prev > 0) prevCustomersWithOrders++
             })
-
-            // product catalog (real stock + metadata enrichment)
-            let catalogById = {}
-            try {
-                const prodSnap = await getDocs(collection(fireDB, "products"))
-                prodSnap.docs.forEach((d) => {
-                    const x = d.data()
-                    catalogById[d.id] = {
-                        id: d.id,
-                        title: x.title || x.name || "Product",
-                        category: x.category || "Uncategorized",
-                        image: productImage(x),
-                        price: Number(x.price || 0),
-                        rating: Number(x.rating) || 0,
-                        stock: Number(x.stock || 0),
-                    }
-                })
-            } catch (e) { console.log("catalog fetch", e) }
 
             // chart data with previous-period overlay (aligned by index)
             const curChart = Object.values(dateMap).sort((a, b) => a._t - b._t)

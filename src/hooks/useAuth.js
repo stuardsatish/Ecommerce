@@ -1,11 +1,10 @@
 import { useSelector, useDispatch } from "react-redux"
-import { signOut } from "firebase/auth"
-import { auth } from "../context/FirebaseConfig"
+import { supabase } from "../context/SupabaseConfig"
 import { setUser, clearUser } from "../context/UserSlice"
 import { setSession, clearSession, broadcastAuth, getSession } from "../utils/sessionUtils"
 
 /**
- * Auth facade over Firebase + Redux with cross-tab session sync.
+ * Auth facade over Supabase + Redux with cross-tab session sync.
  *
  * @returns {{
  *   user: object|null,
@@ -37,9 +36,9 @@ export default function useAuth() {
     broadcastAuth("login", { role: userData.role, userId: userData.uid })
   }
 
-  /** Sign out everywhere (Firebase + Redux + session) and notify all tabs. */
+  /** Sign out everywhere (Supabase + Redux + session) and notify all tabs. */
   const logout = async () => {
-    try { await signOut(auth) } catch { /* already signed out */ }
+    try { await supabase.auth.signOut() } catch { /* already signed out */ }
     dispatch(clearUser())
     clearSession()
     broadcastAuth("logout")

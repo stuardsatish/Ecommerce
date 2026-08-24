@@ -154,7 +154,7 @@ export async function generateInvoice(order, userDetails = {}) {
   // inter-state sale (IGST) vs intra-state (CGST+SGST). Determined up front so
   // the items table can choose its columns per order.
   const isGstDisabled = order.gstEnabled === false || (order.gstEnabled === undefined && settings.gstEnabled === false)
-  const hasStoredGst = !isGstDisabled && order.taxableTotal != null
+  const hasStoredGst = !isGstDisabled && order.taxableTotal != null
   const interState = hasStoredGst
     ? !!order.isInterState
     : (!!userDetails.state && clean(userDetails.state, "").toLowerCase() !== (settings.state || COMPANY.state).toLowerCase())
@@ -354,14 +354,14 @@ export async function generateInvoice(order, userDetails = {}) {
     ? [["#", "Product", "HSN", "Qty", "Unit", "GST", "Taxable", "IGST", "Total"]]
     : [["#", "Product", "HSN", "Qty", "Unit", "GST", "Taxable", "CGST", "SGST", "Total"]]
   const tableColumnStyles = isGstDisabled
-    ? {
-        0: { halign: "center", cellWidth: 20 },
-        1: { cellWidth: "auto" },
-        2: { halign: "center", cellWidth: 36 },
-        3: { halign: "right", cellWidth: 70 },
-        4: { halign: "right", cellWidth: 80 },
-      }
-    : interState
+    ? {
+        0: { halign: "center", cellWidth: 20 },
+        1: { cellWidth: "auto" },
+        2: { halign: "center", cellWidth: 36 },
+        3: { halign: "right", cellWidth: 70 },
+        4: { halign: "right", cellWidth: 80 },
+      }
+    : interState
     ? {
         0: { halign: "center", cellWidth: 18 },
         1: { cellWidth: "auto" },
@@ -397,12 +397,12 @@ export async function generateInvoice(order, userDetails = {}) {
   })
 
   /* ============================== TAX SUMMARY (by HSN / rate) ============================== */
-  if (!isGstDisabled) {
-  // Clean pagination for everything drawn after the (auto-paginating) items
-  // table: if a block won't fit above the bottom margin, start a fresh page.
   const pageBottom = pageH - M
   const ensure = (yy, need) => (yy + need > pageBottom ? (doc.addPage(), M) : yy)
 
+  if (!isGstDisabled) {
+  // Clean pagination for everything drawn after the (auto-paginating) items
+  // table: if a block won't fit above the bottom margin, start a fresh page.
   const taxLabelY = ensure(doc.lastAutoTable.finalY + 20, 64)
   doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.setTextColor(25, 28, 30)
   doc.text("TAX SUMMARY", M, taxLabelY)
@@ -450,7 +450,7 @@ export async function generateInvoice(order, userDetails = {}) {
   })
 
   }
-  /* ============================== SUMMARY + PAYMENT ============================== */
+  /* ============================== SUMMARY + PAYMENT ============================== */
   // Keep the summary (right) and payment (left) blocks together on one page.
   const txnId = clean(order.razorpayPaymentId, "")
   const summaryRows = 1 + (interState ? 1 : 2) + 1 + (promoDiscount > 0 ? 1 : 0)

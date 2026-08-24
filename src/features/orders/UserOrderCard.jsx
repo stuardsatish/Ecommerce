@@ -97,7 +97,8 @@ export default function UserOrderCard({ order, onBuyAgain, onViewDetails, onRevi
           <p style={{ fontWeight: 700, fontSize: "14px", color: "var(--color-ink)", marginBottom: "12px" }}>Product Reviews</p>
           <div className="flex flex-col" style={{ gap: "12px" }}>
             {items.map((item, index) => {
-              const rev = userReviews && (userReviews[`${order.id}_${item.productId}`] || (!userReviews[item.productId]?.orderId ? userReviews[item.productId] : null));
+              // Strict per-order lookup: each order has its own independent review, no cross-order fallback
+              const rev = userReviews && userReviews[`${order.id}_${item.productId}`];
               return (
                 <div key={index} className="flex items-center justify-between" style={{ gap: "12px" }}>
                   <div className="flex items-center" style={{ gap: "12px", minWidth: 0 }}>

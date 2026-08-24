@@ -1,11 +1,8 @@
 import { useState, useRef, useEffect, useMemo } from "react"
 import Papa from "papaparse"
 import { useSelector } from "react-redux"
-import {
-  collection, addDoc, doc, setDoc, getDoc, getDocs, increment, Timestamp,
-  onSnapshot, query, orderBy, limit, serverTimestamp,
-} from "firebase/firestore"
-import { fireDB } from "../../context/FirebaseConfig"
+import { supabase } from "../../context/SupabaseConfig"
+import { callFunction } from "../../utils/edgeFunctions"
 import {
   Upload, UploadCloud, CheckCircle2, XCircle, Clock, HelpCircle,
   Download, TableProperties, AlertCircle, ArrowUp,
@@ -24,7 +21,7 @@ const glass = {
 }
 
 /* ============================== HELPERS ============================== */
-const toJsDate = (v) => (v?.toDate ? v.toDate() : v ? new Date(v) : null)
+const toJsDate = (v) => (v ? new Date(v) : null)
 const bytesToMB = (n) => (Number(n || 0) / 1024 / 1024).toFixed(1)
 const fmtClock = (d) => (d ? d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : "")
 const relativeTime = (d) => {
@@ -37,8 +34,9 @@ const relativeTime = (d) => {
   if (days === 1) return "Yesterday"
   return `${days} days ago`
 }
-const slug = (s) => String(s || "unknown").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "unknown"
-const REQUIRED_COLS = ["order_id", "customer_id", "product", "price", "qty"]
+// Required columns match the orders-bulk-import Edge Function's own
+// validation exactly, so a row that passes preview here also passes there.
+const REQUIRED_COLS = ["order_id", "product", "price", "qty"]
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 
 const AdminUploadOrders = () => {
@@ -49,6 +47,7 @@ const AdminUploadOrders = () => {
   const [uploadSessions, setUploadSessions] = useState([])
   const [activityLog, setActivityLog] = useState([])
   const [importAnalytics, setImportAnalytics] = useState([])
+  const [catalogTitles, setCatalogTitles] = useState([])
   const [sessionsLoaded, setSessionsLoaded] = useState(false)
   const [logLoaded, setLogLoaded] = useState(false)
   const [selectedFile, setSelectedFile] = useState(null)
@@ -66,22 +65,59 @@ const AdminUploadOrders = () => {
   const containerRef = useRef(null)
   const intervalRef = useRef(null)
 
-  /* ---------------- REALTIME LISTENERS ---------------- */
+  /* ---------------- LOAD HISTORY (+ realtime) ---------------- */
+  // upload_sessions / activity_log are generic `data jsonb` tables (admin-only
+  // RLS — see 01-schema.sql) written directly from the client, same pattern
+  // AddDiscountPage already uses for its own admin-only reads/writes.
   useEffect(() => {
-    const unsubSessions = onSnapshot(
-      query(collection(fireDB, "uploadSessions"), orderBy("createdAt", "desc"), limit(10)),
-      (snap) => { setUploadSessions(snap.docs.map((d) => ({ id: d.id, ...d.data() }))); setSessionsLoaded(true) },
-      (err) => console.log("uploadSessions", err)
-    )
-    const unsubLog = onSnapshot(
-      query(collection(fireDB, "activityLog"), orderBy("timestamp", "desc"), limit(8)),
-      (snap) => { setActivityLog(snap.docs.map((d) => ({ id: d.id, ...d.data() }))); setLogLoaded(true) },
-      (err) => console.log("activityLog", err)
-    )
-    getDocs(collection(fireDB, "importAnalytics"))
-      .then((snap) => setImportAnalytics(snap.docs.map((d) => d.data())))
-      .catch((e) => console.log("importAnalytics", e))
-    return () => { unsubSessions(); unsubLog() }
+    let active = true
+
+    const loadSessions = async () => {
+      const { data, error } = await supabase
+        .from("upload_sessions")
+        .select("id, data, created_at")
+        .order("created_at", { ascending: false })
+        .limit(10)
+      if (error) { console.log("uploadSessions", error); return }
+      if (active) {
+        setUploadSessions((data || []).map((r) => ({ id: r.id, createdAt: r.created_at, ...r.data })))
+        setSessionsLoaded(true)
+      }
+    }
+    const loadLog = async () => {
+      const { data, error } = await supabase
+        .from("activity_log")
+        .select("id, data, created_at")
+        .order("created_at", { ascending: false })
+        .limit(8)
+      if (error) { console.log("activityLog", error); return }
+      if (active) {
+        setActivityLog((data || []).map((r) => ({ id: r.id, timestamp: r.created_at, ...r.data })))
+        setLogLoaded(true)
+      }
+    }
+    const loadAnalytics = async () => {
+      const { data, error } = await supabase.from("import_analytics").select("data")
+      if (error) { console.log("importAnalytics", error); return }
+      if (active) setImportAnalytics((data || []).map((r) => r.data))
+    }
+    const loadCatalog = async () => {
+      const { data, error } = await supabase.from("products").select("title")
+      if (!error && active) setCatalogTitles((data || []).map((p) => p.title).filter(Boolean))
+    }
+
+    loadSessions()
+    loadLog()
+    loadAnalytics()
+    loadCatalog()
+
+    const channel = supabase
+      .channel("admin-upload-orders")
+      .on("postgres_changes", { event: "*", schema: "public", table: "upload_sessions" }, loadSessions)
+      .on("postgres_changes", { event: "*", schema: "public", table: "activity_log" }, loadLog)
+      .subscribe()
+
+    return () => { active = false; supabase.removeChannel(channel) }
   }, [])
 
   /* ---------------- DERIVED KPIs (from uploadSessions) ---------------- */
@@ -134,7 +170,7 @@ const AdminUploadOrders = () => {
 
   /* ---------------- ACTIVITY LOG WRITER ---------------- */
   const logActivity = (event, type) =>
-    addDoc(collection(fireDB, "activityLog"), { event, actor: actorName, timestamp: serverTimestamp(), type }).catch((e) => console.log(e))
+    supabase.from("activity_log").insert({ data: { event, actor: actorName, type } }).then(({ error }) => { if (error) console.log(error) })
 
   /* ---------------- CSV PARSE + VALIDATION ---------------- */
   const parseFile = (file) => {
@@ -147,26 +183,38 @@ const AdminUploadOrders = () => {
         const hasAll = REQUIRED_COLS.every((c) => headers.includes(c))
         setColumnsValid(hasAll)
 
+        const catalogLower = catalogTitles.map((t) => t.toLowerCase())
+        const matchesCatalog = (title) => {
+          const needle = String(title || "").toLowerCase().trim()
+          if (!needle) return false
+          return catalogLower.some((t) => t === needle || t.startsWith(needle))
+        }
+
         const rows = results.data.map((r) => {
           const orderId = (r.order_id || "").trim()
-          const isValidId = orderId.startsWith("#ORD-") && orderId.length > 5
-          const isValidCustomer = !!(r.customer_id || "").trim()
+          const product = (r.product || "").trim()
+          const isValidId = orderId.length > 0
+          const isValidCustomer = !!((r.customer_id || "").trim() || (r.customer_email || "").trim())
+          const isValidProduct = matchesCatalog(product)
           const isValidPrice = !isNaN(parseFloat(r.price)) && parseFloat(r.price) > 0
           const isValidQty = !isNaN(parseInt(r.qty)) && parseInt(r.qty) > 0
-          const valid = isValidId && isValidCustomer && isValidPrice && isValidQty
+          const valid = isValidId && isValidCustomer && isValidProduct && isValidPrice && isValidQty
           return {
             order_id: orderId,
             customer_id: (r.customer_id || "").trim(),
-            product: (r.product || "").trim(),
+            customer_email: (r.customer_email || "").trim(),
+            customer_name: (r.customer_name || "").trim(),
+            product,
             price: r.price,
             qty: r.qty,
-            rawStatus: (r.status || "").trim(),
-            status: valid ? "VALID" : "INVALID",
-            errorType: !isValidId ? "ID" : !isValidCustomer ? "CUSTOMER" : !isValidPrice ? "PRICE" : !isValidQty ? "QTY" : null,
+            status: (r.status || "").trim(),
+            valid,
+            status_ui: valid ? "VALID" : "INVALID",
+            errorType: !isValidId ? "ID" : !isValidCustomer ? "CUSTOMER" : !isValidProduct ? "PRODUCT" : !isValidPrice ? "PRICE" : !isValidQty ? "QTY" : null,
           }
         })
         const withId = rows.filter((r) => r.order_id)
-        setIdsSanitized(withId.length > 0 && withId.every((r) => r.status === "VALID"))
+        setIdsSanitized(withId.length > 0 && withId.every((r) => r.valid))
         setPreviewData(rows)
         logActivity("Validation Completed", "success")
       },
@@ -201,93 +249,43 @@ const AdminUploadOrders = () => {
 
   const finishUpload = async () => {
     try {
-      const validRows = previewData.filter((r) => r.status === "VALID")
-      const userMap = {}
-      try {
-        const usersSnap = await getDocs(collection(fireDB, "users"))
-        usersSnap.forEach((d) => { const u = d.data(); userMap[d.id] = { name: u.name || "User", email: u.email || "" } })
-      } catch { /* names fall back below */ }
+      const validRows = previewData.filter((r) => r.valid)
 
-      // Group valid rows by CSV order_id → one real order per group.
-      const groups = {}
-      validRows.forEach((r, i) => { const k = r.order_id || `row_${i}`; (groups[k] = groups[k] || []).push(r) })
-
-      const now = new Date()
-      const dailyAgg = {}, monthlyAgg = {}, yearlyAgg = {}, prodAgg = {}, custAgg = {}
-      const orderDocs = [], invLogs = []
-
-      Object.values(groups).forEach((rws) => {
-        const master = rws[0]
-        const uid = String(master.customer_id)
-        const products = rws.map((r) => ({
-          productId: slug(r.product),
-          title: r.product || "Unknown Product",
-          price: Number(r.price) || 0,
-          quantity: Number(r.qty) || 1,
-          category: "imported",
-        }))
-        const total = Math.round(products.reduce((s, p) => s + p.price * p.quantity, 0))
-        const totalItems = products.reduce((s, p) => s + p.quantity, 0)
-        const orderRef = doc(collection(fireDB, "orders"))
-        orderDocs.push({
-          ref: orderRef,
-          data: {
-            orderId: orderRef.id,
-            externalOrderId: master.order_id,
-            userId: uid,
-            userName: userMap[uid]?.name || "Imported User",
-            userEmail: userMap[uid]?.email || "",
-            total, totalItems,
-            paymentMethod: "Imported",
-            paymentStatus: "paid",
-            orderStatus: (master.rawStatus || "delivered").toLowerCase(),
-            createdAt: Timestamp.fromDate(now),
-            products,
-            _imported: true,
-          },
-        })
-        const day = now.toISOString().slice(0, 10), month = day.slice(0, 7), year = day.slice(0, 4)
-        ;(dailyAgg[day] = dailyAgg[day] || { revenue: 0, orders: 0 }).revenue += total; dailyAgg[day].orders++
-        ;(monthlyAgg[month] = monthlyAgg[month] || { revenue: 0, orders: 0 }).revenue += total; monthlyAgg[month].orders++
-        ;(yearlyAgg[year] = yearlyAgg[year] || { revenue: 0, orders: 0 }).revenue += total; yearlyAgg[year].orders++
-        const ca = custAgg[uid] = custAgg[uid] || { name: userMap[uid]?.name || "Imported User", email: userMap[uid]?.email || "", orders: 0, spent: 0 }
-        ca.orders++; ca.spent += total
-        products.forEach((p) => {
-          const pa = prodAgg[p.productId] = prodAgg[p.productId] || { title: p.title, category: p.category, orders: 0, revenue: 0, qty: 0 }
-          pa.orders++; pa.revenue += p.price * p.quantity; pa.qty += p.quantity
-          invLogs.push({ productId: p.productId, change: -p.quantity, reason: "import", createdAt: Timestamp.fromDate(now), _imported: true })
-        })
+      // The server re-validates + re-matches every row against the live
+      // catalog and writes one real order per order_id group via
+      // create_order_tx — same atomic stock/stats/analytics path every other
+      // checkout flow (Razorpay/COD/billing/WhatsApp-paste) uses.
+      const { res, data } = await callFunction("orders-bulk-import", {
+        rows: validRows.map((r) => ({
+          order_id: r.order_id,
+          customer_id: r.customer_id || undefined,
+          customer_email: r.customer_email || undefined,
+          customer_name: r.customer_name || undefined,
+          product: r.product,
+          price: r.price,
+          qty: r.qty,
+          status: r.status || undefined,
+        })),
+        paymentStatus: "paid",
       })
+      if (!res.ok || !data.success) throw new Error(data.error || "Import failed")
 
-      // Write real orders + aggregates (keeps the analytics dashboards consistent).
-      for (const od of orderDocs) await setDoc(od.ref, od.data)
-      for (const [day, v] of Object.entries(dailyAgg)) await setDoc(doc(fireDB, "analytics", "daily", "stats", day), { date: day, revenue: increment(v.revenue), orders: increment(v.orders) }, { merge: true })
-      for (const [month, v] of Object.entries(monthlyAgg)) await setDoc(doc(fireDB, "analytics", "monthly", "stats", month), { month, revenue: increment(v.revenue), orders: increment(v.orders) }, { merge: true })
-      for (const [year, v] of Object.entries(yearlyAgg)) await setDoc(doc(fireDB, "analytics", "yearly", "stats", year), { year, revenue: increment(v.revenue), orders: increment(v.orders) }, { merge: true })
-      for (const [pid, v] of Object.entries(prodAgg)) await setDoc(doc(fireDB, "productStats", pid), { title: v.title, category: v.category, totalOrders: increment(v.orders), totalRevenue: increment(v.revenue), totalQuantity: increment(v.qty), lastSoldAt: Timestamp.fromDate(now) }, { merge: true })
-      for (const [uid, v] of Object.entries(custAgg)) {
-        const cRef = doc(fireDB, "customerStats", uid)
-        const cSnap = await getDoc(cRef)
-        const newO = (cSnap.exists() ? cSnap.data().totalOrders || 0 : 0) + v.orders
-        const newS = (cSnap.exists() ? cSnap.data().totalSpent || 0 : 0) + v.spent
-        await setDoc(cRef, { name: v.name, email: v.email, totalOrders: newO, totalSpent: newS, avgOrderValue: newO > 0 ? Math.round(newS / newO) : 0, lastOrderDate: Timestamp.fromDate(now) }, { merge: true })
-      }
-      for (const lg of invLogs) await addDoc(collection(fireDB, "inventoryLogs"), lg)
+      const failCount = previewData.length - validRows.length + (data.failed || 0)
+      const sessionStatus = data.created === 0 ? "failed" : failCount > 0 ? "success" : "success"
 
-      // Upload session (drives Upload History + KPIs)
-      const failCount = previewData.length - validRows.length
-      await addDoc(collection(fireDB, "uploadSessions"), {
-        fileName: selectedFile.name,
-        fileSize: selectedFile.size,
-        status: failCount > 0 && validRows.length === 0 ? "failed" : "success",
-        uploadedBy: actorName,
-        createdAt: serverTimestamp(),
-        recordCount: previewData.length,
-        successCount: validRows.length,
-        failCount,
-        config,
+      await supabase.from("upload_sessions").insert({
+        data: {
+          fileName: selectedFile.name,
+          fileSize: selectedFile.size,
+          status: sessionStatus,
+          uploadedBy: actorName,
+          recordCount: previewData.length,
+          successCount: data.created || 0,
+          failCount,
+          config,
+        },
       })
-      await logActivity(`Imported ${orderDocs.length} order(s) from ${selectedFile.name}`, "upload")
+      await logActivity(`Imported ${data.created} order(s) from ${selectedFile.name}`, data.failed ? "warning" : "upload")
 
       if (intervalRef.current) clearInterval(intervalRef.current)
       setUploadProgress(100)
@@ -309,8 +307,8 @@ const AdminUploadOrders = () => {
 
   /* ---------------- TEMPLATE DOWNLOAD ---------------- */
   const downloadTemplate = () => {
-    const headers = ["order_id", "customer_email", "sku", "unit_price", "qty", "customer_id"]
-    const sample = ["#ORD-1001", "buyer@example.com", "SKU-001", "499", "2", "user_abc123"]
+    const headers = ["order_id", "customer_id", "customer_email", "customer_name", "product", "price", "qty", "status"]
+    const sample = ["#ORD-1001", "", "buyer@example.com", "Jane Buyer", catalogTitles[0] || "Sample Product", "499", "2", "delivered"]
     const csv = `${headers.join(",")}\n${sample.join(",")}\n`
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8;" }))
     const a = document.createElement("a")
@@ -441,7 +439,7 @@ const AdminUploadOrders = () => {
             {/* DEPLOY BUTTON */}
             {selectedFile && !isUploading && (
               <button onClick={handleUpload} className="w-full flex items-center justify-center" style={{ marginTop: "24px", background: "var(--color-ink)", color: "var(--color-inverse)", borderRadius: "9999px", padding: "16px", fontWeight: 700, fontSize: "14px", letterSpacing: "0.35px", gap: "8px" }}>
-                <Upload size={16} /> Deploy {previewData.filter((r) => r.status === "VALID").length} Valid Orders
+                <Upload size={16} /> Deploy {previewData.filter((r) => r.valid).length} Valid Orders
               </button>
             )}
           </div>
@@ -463,7 +461,7 @@ const AdminUploadOrders = () => {
               <table className="w-full" style={{ borderCollapse: "collapse" }}>
                 <thead style={{ position: "sticky", top: 0, zIndex: 1 }}>
                   <tr style={{ background: "var(--color-surface-muted)", borderBottom: "1px solid var(--color-border)" }}>
-                    {["ORDER ID", "CUSTOMER ID", "PRODUCT", "PRICE", "QTY", "STATUS"].map((h) => (
+                    {["ORDER ID", "CUSTOMER", "PRODUCT", "PRICE", "QTY", "STATUS"].map((h) => (
                       <th key={h} style={{ textAlign: "left", fontWeight: 700, fontSize: "10px", color: "var(--color-body)", textTransform: "uppercase", letterSpacing: "1px", padding: "16px 24px" }}>{h}</th>
                     ))}
                   </tr>
@@ -474,12 +472,12 @@ const AdminUploadOrders = () => {
                     return (
                       <tr key={i} style={{ borderTop: "1px solid var(--color-border)" }}>
                         <td style={{ padding: "16px 24px", fontFamily: MONO, fontSize: "14px", color: invalidId ? "var(--color-error)" : "var(--color-ink)" }}>{invalidId ? "#ERR-VOID" : r.order_id}</td>
-                        <td style={{ padding: "16px 24px", fontWeight: 500, fontSize: "14px", color: "var(--color-ink)" }}>{r.customer_id || "—"}</td>
+                        <td style={{ padding: "16px 24px", fontWeight: 500, fontSize: "14px", color: "var(--color-ink)" }}>{r.customer_id || r.customer_email || "—"}</td>
                         <td style={{ padding: "16px 24px", fontSize: "14px", color: "var(--color-ink)" }}>{r.product || "—"}</td>
-                        <td style={{ padding: "16px 24px", fontSize: "14px", color: "var(--color-ink)" }}>{isNaN(parseFloat(r.price)) ? "—" : `$${parseFloat(r.price).toLocaleString()}`}</td>
+                        <td style={{ padding: "16px 24px", fontSize: "14px", color: "var(--color-ink)" }}>{isNaN(parseFloat(r.price)) ? "—" : `₹${parseFloat(r.price).toLocaleString()}`}</td>
                         <td style={{ padding: "16px 24px", fontSize: "14px", color: "var(--color-ink)" }}>{r.qty || "—"}</td>
                         <td style={{ padding: "16px 24px" }}>
-                          {r.status === "VALID" ? (
+                          {r.valid ? (
                             <span style={{ background: "var(--color-success-border)", color: "var(--color-success)", borderRadius: "9999px", padding: "2.5px 10px", fontWeight: 700, fontSize: "10px", textTransform: "uppercase" }}>Valid</span>
                           ) : (
                             <span className="inline-flex items-center" style={{ gap: "4px", background: "var(--color-error-subtle)", color: "var(--color-error)", borderRadius: "9999px", padding: "2.5px 10px", fontWeight: 700, fontSize: "10px", textTransform: "uppercase" }}>
@@ -601,7 +599,7 @@ const AdminUploadOrders = () => {
               <div style={{ background: "color-mix(in srgb, var(--color-surface) 10%, transparent)", borderRadius: "12px", padding: "20px 12px 12px" }}>
                 <span style={{ fontWeight: 700, fontSize: "10px", color: "var(--color-inverse)", textTransform: "uppercase", letterSpacing: "1px" }}>Required Columns:</span>
                 <div className="flex flex-wrap" style={{ gap: "8px", marginTop: "8px" }}>
-                  {["order_id", "customer_email", "sku", "unit_price"].map((c) => (
+                  {["order_id", "customer_id / customer_email", "product", "price", "qty"].map((c) => (
                     <span key={c} style={{ background: "color-mix(in srgb, var(--color-surface) 20%, transparent)", borderRadius: "9999px", padding: "2px 8px", fontSize: "10px", color: "var(--color-inverse)" }}>{c}</span>
                   ))}
                 </div>

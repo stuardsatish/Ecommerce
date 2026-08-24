@@ -23,19 +23,9 @@ import {
   Banknote,
   X,
 } from "lucide-react";
-import {
-  doc,
-  getDoc,
-  collection,
-  getDocs,
-  query,
-  where,
-  orderBy,
-  limit,
-} from "firebase/firestore";
-import { sendEmailVerification } from "firebase/auth";
-
-import { fireDB, auth } from "../../context/FirebaseConfig";
+import { supabase } from "../../context/SupabaseConfig";
+import { mapProductRows } from "../../utils/supabaseProducts";
+import { upsertCartItem, removeCartItem, decrementOrRemoveCartItem, clearCartItems, nextAddQuantity, nextRemoveQuantity } from "../../utils/supabaseCart";
 import useIsMobile from "../../hooks/useIsMobile";
 import {
   loadRazorpayScript,
@@ -49,6 +39,7 @@ const CartPage = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const cartItems = useSelector((state) => state.cart.cartItems);
+  const user = useSelector((state) => state.user.user);
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -62,142 +53,146 @@ const CartPage = () => {
     shippingCost: 49,
   });
   const [settingsLoading, setSettingsLoading] = useState(true);
-  const [gstEnabled, setGstEnabled] = useState(true);
+  const [gstEnabled, setGstEnabled] = useState(true);
 
   useEffect(() => {
     let active = true;
     const fetchSettings = async () => {
       try {
-        const [paySnap, shipSnap, gstSnap] = await Promise.all([
-          getDoc(doc(fireDB, "settings", "paymentSettings")),
-          getDoc(doc(fireDB, "settings", "shippingSettings")),
-          getDoc(doc(fireDB, "settings", "gstSettings")),
-        ]);
+        const { data: rows, error } = await supabase
+          .from("settings")
+          .select("id, data")
+          .in("id", ["paymentSettings", "shippingSettings", "gstSettings"]);
+        if (error) throw error;
+        const byId = {};
+        (rows || []).forEach((r) => { byId[r.id] = r.data || {}; });
         if (active) {
-          if (paySnap.exists()) {
-            const pd = paySnap.data();
-            // COD defaults to enabled for docs created before the flag existed.
+          const pd = byId.paymentSettings;
+          if (pd) {
+            // COD defaults to enabled for rows created before the flag existed.
             setPaymentSettings({ ...pd, codPayment: pd.codPayment !== false });
           }
-          if (shipSnap.exists()) {
-            const sd = shipSnap.data();
-            setShippingConfig({
-              freeShippingThreshold: typeof sd.freeShippingThreshold === "number" ? sd.freeShippingThreshold : 500,
-              shippingCost: typeof sd.shippingCost === "number" ? sd.shippingCost : 49,
-            });
-          }
-          if (gstSnap.exists()) {
-            setGstEnabled(gstSnap.data().gstEnabled !== false);
-          }
-        }
-      } catch (error) {
-        console.error("Error fetching settings:", error);
-      } finally {
-        if (active) {
-          setSettingsLoading(false);
-        }
-      }
-    };
-    fetchSettings();
-    return () => {
-      active = false;
-    };
-  }, []);
+          const sd = byId.shippingSettings;
+          if (sd) {
+            setShippingConfig({
+              freeShippingThreshold: typeof sd.freeShippingThreshold === "number" ? sd.freeShippingThreshold : 500,
+              shippingCost: typeof sd.shippingCost === "number" ? sd.shippingCost : 49,
+            });
+          }
+          const gd = byId.gstSettings;
+          if (gd) {
+            setGstEnabled(gd.gstEnabled !== false);
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching settings:", error);
+      } finally {
+        if (active) {
+          setSettingsLoading(false);
+        }
+      }
+    };
+    fetchSettings();
+    return () => {
+      active = false;
+    };
+  }, []);
 
-  const isCheckoutDisabled = !paymentSettings.whatsappPayment && !paymentSettings.razorpayPayment && !paymentSettings.codPayment;
+  const isCheckoutDisabled = !paymentSettings.whatsappPayment && !paymentSettings.razorpayPayment && !paymentSettings.codPayment;
 
-  // Mobile design renders below the `lg` breakpoint; the desktop redesign at lg+.
-  const isMobile = useIsMobile(1024);
+  // Mobile design renders below the `lg` breakpoint; the desktop redesign at lg+.
+  const isMobile = useIsMobile(1024);
 
-  /* ---------- DESKTOP REDESIGN STATE ---------- */
-  const [promoCode, setPromoCode] = useState("");
-  const [appliedPromo, setAppliedPromo] = useState(null);
-  const [suggestions, setSuggestions] = useState([]);
-  const [loadingSuggestions, setLoadingSuggestions] = useState(true);
+  /* ---------- DESKTOP REDESIGN STATE ---------- */
+  const [promoCode, setPromoCode] = useState("");
+  const [appliedPromo, setAppliedPromo] = useState(null);
+  const [suggestions, setSuggestions] = useState([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(true);
 
-  const total = Math.round(
-    cartItems.reduce(
-      (acc, item) => acc + Number(item.price) * item.quantity,
-      0,
-    ),
-  );
+  const total = Math.round(
+    cartItems.reduce(
+      (acc, item) => acc + Number(item.price) * item.quantity,
+      0,
+    ),
+  );
 
-  const totalItems = cartItems.reduce((acc, item) => acc + item.quantity, 0);
+  const totalItems = cartItems.reduce((acc, item) => acc + item.quantity, 0);
 
-  /* ---------- ORDER SUMMARY (derived from cart) ---------- */
-  const money = (n) => `₹${Number(n || 0).toFixed(2)}`;
+  /* ---------- ORDER SUMMARY (derived from cart) ---------- */
+  const money = (n) => `₹${Number(n || 0).toFixed(2)}`;
 
-  const isDiscountActive = (item) => {
-    if (!item) return false;
-    const disc = Number(item.discount || 0);
-    if (disc <= 0) return false;
-    if (item.discountExpiry) {
-      const val = item.discountExpiry;
-      let expiry = NaN;
-      if (typeof val === "string") {
-        expiry = new Date(val).getTime();
-        if (isNaN(expiry)) {
-          const cleanStr = val.replace(/(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2})\s+(AM|PM)/i, "$1 $2 $3");
-          expiry = new Date(cleanStr).getTime();
-        }
-      } else if (val?.toDate) {
-        expiry = val.toDate().getTime();
-      } else if (typeof val === "number") {
-        expiry = val;
-      }
-      if (!isNaN(expiry) && Date.now() > expiry) {
-        return false;
-      }
-    }
-    return true;
-  };
+  const isDiscountActive = (item) => {
+    if (!item) return false;
+    const disc = Number(item.discount || 0);
+    if (disc <= 0) return false;
+    if (item.discountExpiry) {
+      const val = item.discountExpiry;
+      let expiry = NaN;
+      if (typeof val === "string") {
+        expiry = new Date(val).getTime();
+        if (isNaN(expiry)) {
+          const cleanStr = val.replace(/(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2})\s+(AM|PM)/i, "$1 $2 $3");
+          expiry = new Date(cleanStr).getTime();
+        }
+      } else if (val?.toDate) {
+        expiry = val.toDate().getTime();
+      } else if (typeof val === "number") {
+        expiry = val;
+      }
+      if (!isNaN(expiry) && Date.now() > expiry) {
+        return false;
+      }
+    }
+    return true;
+  };
 
-  const subtotal = cartItems.reduce((sum, item) => {
-    const price = Number(item.price || 0);
-    const quantity = Number(item.quantity || 0);
-    const discount = isDiscountActive(item) ? Number(item.discount || 0) : 0;
-    const discountedPrice = price - (price * discount) / 100;
+  const subtotal = cartItems.reduce((sum, item) => {
+    const price = Number(item.price || 0);
+    const quantity = Number(item.quantity || 0);
+    const discount = isDiscountActive(item) ? Number(item.discount || 0) : 0;
+    const discountedPrice = price - (price * discount) / 100;
 
-    return sum + discountedPrice * quantity;
-  }, 0);
+    return sum + discountedPrice * quantity;
+  }, 0);
 
-  // Calculate promo discount dynamically
-  let promoDiscount = 0;
-  if (appliedPromo) {
-    let isExpired = false;
-    if (appliedPromo.expiryDate) {
-      const expiry = new Date(appliedPromo.expiryDate).getTime();
-      if (Date.now() > expiry) {
-        isExpired = true;
-      }
-    }
-    if (!isExpired) {
-      promoDiscount = appliedPromo.type === "percent"
-        ? Math.round((subtotal * Number(appliedPromo.value || 0)) / 100)
-        : Number(appliedPromo.value || 0);
-    }
-  }
+  // Calculate promo discount dynamically
+  let promoDiscount = 0;
+  if (appliedPromo) {
+    let isExpired = false;
+    if (appliedPromo.expiryDate) {
+      const expiry = new Date(appliedPromo.expiryDate).getTime();
+      if (Date.now() > expiry) {
+        isExpired = true;
+      }
+    }
+    if (!isExpired) {
+      promoDiscount = appliedPromo.type === "percent"
+        ? Math.round((subtotal * Number(appliedPromo.value || 0)) / 100)
+        : Number(appliedPromo.value || 0);
+    }
+  }
 
-  const shippingEstimate = subtotal >= shippingConfig.freeShippingThreshold ? 0 : shippingConfig.shippingCost;
-  const orderTotal = Math.max(0, subtotal + shippingEstimate - promoDiscount);
+  const shippingEstimate = subtotal >= shippingConfig.freeShippingThreshold ? 0 : shippingConfig.shippingCost;
+  // Mirror the server's rounding in functions/routes/payment.js exactly (round the
+  // subtotal to whole rupees BEFORE adding shipping/promo) — otherwise this total
+  // can show paise the server never charges, since Razorpay is always billed a
+  // rounded whole-rupee amount.
+  const subtotalRounded = Math.round(subtotal);
+  const orderTotal = Math.max(0, Math.round(subtotalRounded + shippingEstimate - promoDiscount));
   useEffect(() => {
     let active = true;
     (async () => {
       try {
-        let snap;
-        try {
-          snap = await getDocs(
-            query(
-              collection(fireDB, "products"),
-              orderBy("rating", "desc"),
-              limit(8),
-            ),
-          );
-        } catch {
-          snap = await getDocs(query(collection(fireDB, "products"), limit(8)));
+        let { data, error } = await supabase
+          .from("products")
+          .select("*")
+          .order("rating", { ascending: false })
+          .limit(8);
+        if (error) {
+          ({ data, error } = await supabase.from("products").select("*").limit(8));
+          if (error) throw error;
         }
-        if (active)
-          setSuggestions(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        if (active) setSuggestions(mapProductRows(data));
       } catch (e) {
         console.log("suggestions fetch failed:", e);
       } finally {
@@ -239,18 +234,32 @@ const CartPage = () => {
   };
 
   /* Remove an item entirely (desktop "Remove" button). */
-  const handleDeleteItem = (id) => dispatch(deleteCart(id));
+  const handleDeleteItem = (id) => {
+    dispatch(deleteCart(id));
+    removeCartItem(user?.uid, id);
+  };
 
   /* ADD CART */
 
   const handleAddCart = (item) => {
+    const qty = nextAddQuantity(cartItems, item.id);
     dispatch(addCart(item));
+    upsertCartItem(user?.uid, item, qty);
   };
 
   /* REMOVE CART */
 
   const handleRemoveCart = (id) => {
+    const qty = nextRemoveQuantity(cartItems, id);
     dispatch(removeCart(id));
+    decrementOrRemoveCartItem(user?.uid, id, qty);
+  };
+
+  /* Empty the cart entirely (UI "Clear Cart" buttons — not the post-checkout
+     clears below, which the server already handles once orders are wired up). */
+  const handleClearCart = () => {
+    dispatch(clearCart());
+    clearCartItems(user?.uid);
   };
 
   /* PLACE ORDER — the server prices the cart, takes payment, and writes the
@@ -259,8 +268,7 @@ const CartPage = () => {
 
   const placeOrder = async () => {
     try {
-      const user = auth.currentUser;
-      if (!user) {
+      if (!user?.uid) {
         toast.error("Please login first");
         return;
       }
@@ -270,10 +278,10 @@ const CartPage = () => {
       }
 
       /* Require a verified email before checkout (also enforced server-side). */
-      await user.reload();
-      if (!user.emailVerified) {
+      const { data: freshAuth } = await supabase.auth.getUser();
+      if (!freshAuth?.user?.email_confirmed_at) {
         try {
-          await sendEmailVerification(user);
+          await supabase.auth.resend({ type: "signup", email: user.email });
         } catch (e) {
           console.log("verify email send:", e);
         }
@@ -285,10 +293,8 @@ const CartPage = () => {
 
       setIsProcessing(true);
 
-      /* Prefill info only — NOT prices. */
-      const userRef = doc(fireDB, "users", user.uid);
-      const userSnap = await getDoc(userRef);
-      const userData = userSnap.exists() ? userSnap.data() : {};
+      /* Prefill info only — NOT prices. Profile data is already in Redux. */
+      const userData = user;
 
       /* 1) Load the Razorpay checkout script */
       const scriptOk = await loadRazorpayScript();
@@ -318,8 +324,8 @@ const CartPage = () => {
         description: `Order • ${totalItems} item(s)`,
         order_id: rzpOrder.orderId,
         prefill: {
-          name: userData.name || user.displayName || "",
-          email: userData.email || user.email || "",
+          name: userData.name || "",
+          email: userData.email || "",
           contact: userData.phone || "",
         },
         theme: { color: "var(--color-primary)" },
@@ -390,8 +396,7 @@ const CartPage = () => {
     try {
       setShowPaymentModal(false);
 
-      const user = auth.currentUser;
-      if (!user) {
+      if (!user?.uid) {
         toast.error("Please login first to place an order");
         return;
       }
@@ -401,10 +406,10 @@ const CartPage = () => {
       }
 
       /* Require a verified email (also enforced server-side). */
-      await user.reload();
-      if (!user.emailVerified) {
+      const { data: freshAuth } = await supabase.auth.getUser();
+      if (!freshAuth?.user?.email_confirmed_at) {
         try {
-          await sendEmailVerification(user);
+          await supabase.auth.resend({ type: "signup", email: user.email });
         } catch (e) {
           console.log("verify email send:", e);
         }
@@ -415,9 +420,7 @@ const CartPage = () => {
       }
 
       /* Address must be on file before COD (server rejects otherwise). */
-      const userSnap = await getDoc(doc(fireDB, "users", user.uid));
-      const userData = userSnap.exists() ? userSnap.data() : {};
-      const addr = userData.address;
+      const addr = user.address;
       const street = typeof addr === "object" ? addr?.street : addr;
       if (!street || !String(street).trim()) {
         toast.error(
@@ -435,56 +438,42 @@ const CartPage = () => {
         promoCode: appliedPromo ? appliedPromo.code : "",
       });
 
-      dispatch(clearCart());
-      toast.success("Order placed successfully with Cash on Delivery!", {
-        position: "bottom-right",
-        autoClose: 4000,
-        theme: "dark",
-      });
-      navigate("/userorders");
-    } catch (err) {
-      console.error("COD Order Error:", err);
-      toast.error(err.message || "Could not place order.");
-    } finally {
-      setIsProcessing(false);
-    }
-  };
+      dispatch(clearCart());
+      toast.success("Order placed successfully with Cash on Delivery!", {
+        position: "bottom-right",
+        autoClose: 4000,
+        theme: "dark",
+      });
+      navigate("/userorders");
+    } catch (err) {
+      console.error("COD Order Error:", err);
+      toast.error(err.message || "Could not place order.");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
-  const sendOrderToWhatsApp = async () => {
-    try {
-      setShowPaymentModal(false);
-      setIsProcessing(true);
+  const sendOrderToWhatsApp = async () => {
+    try {
+      setShowPaymentModal(false);
+      setIsProcessing(true);
 
-      const user = auth.currentUser;
-      let userData = {};
-      if (user) {
-        try {
-          const userRef = doc(fireDB, "users", user.uid);
-          const userSnap = await getDoc(userRef);
-          if (userSnap.exists()) {
-            userData = userSnap.data();
-          }
-        } catch (e) {
-          console.log("Error fetching user data from Firestore:", e);
-        }
-      }
-
-      const customerName = userData.name || user?.displayName || "";
-      const customerEmail = userData.email || user?.email || "";
-      const customerPhone = userData.phone || user?.phoneNumber || "NA";
-      const customerID = userData.uid || user?.uid || "";
+      const customerName = user?.name || "";
+      const customerEmail = user?.email || "";
+      const customerPhone = user?.phone || "NA";
+      const customerID = user?.uid || "";
 
       let itemsStr = "";
-      cartItems.forEach((item, index) => {
-        const mrp = Number(item.price || 0);
-        const discount = isDiscountActive(item) ? Number(item.discount || 0) : 0;
-        const discountedPrice = Number((mrp - (mrp * discount) / 100).toFixed(2));
-        if (discount > 0) {
-          itemsStr += `${index + 1}. ${item.title}\n Quantity: ${item.quantity}\n MRP: ${money(mrp)}\n Discount: ${discount}%\n Discounted Price: ${money(discountedPrice)}\n\n`;
-        } else {
-          itemsStr += `${index + 1}. ${item.title}\n Quantity: ${item.quantity}\n MRP: ${money(mrp)}\n Discounted Price: ${money(mrp)}\n\n`;
-        }
-      });
+      cartItems.forEach((item, index) => {
+        const mrp = Number(item.price || 0);
+        const discount = isDiscountActive(item) ? Number(item.discount || 0) : 0;
+        const discountedPrice = Number((mrp - (mrp * discount) / 100).toFixed(2));
+        if (discount > 0) {
+          itemsStr += `${index + 1}. ${item.title}\n Quantity: ${item.quantity}\n MRP: ${money(mrp)}\n Discount: ${discount}%\n Discounted Price: ${money(discountedPrice)}\n\n`;
+        } else {
+          itemsStr += `${index + 1}. ${item.title}\n Quantity: ${item.quantity}\n MRP: ${money(mrp)}\n Discounted Price: ${money(mrp)}\n\n`;
+        }
+      });
 
       const totalItems = cartItems.reduce(
         (acc, item) => acc + item.quantity,
@@ -835,14 +824,14 @@ Thank you.`;
                           </button>
                         </div>
                         {/* <span style={{ color: "var(--color-ink)", fontWeight: 700, fontSize: "16px" }}>${Number(item.price * item.quantity).toFixed(2)}</span> */}
-                        {(() => {
-                          const price = Number(item.price);
-                          const qty = Number(item.quantity);
-                          const discount = isDiscountActive(item) ? Number(item.discount || 0) : 0;
+                        {(() => {
+                          const price = Number(item.price);
+                          const qty = Number(item.quantity);
+                          const discount = isDiscountActive(item) ? Number(item.discount || 0) : 0;
 
-                          const originalTotal = price * qty;
-                          const discountedTotal =
-                            originalTotal - (originalTotal * discount) / 100;
+                          const originalTotal = price * qty;
+                          const discountedTotal =
+                            originalTotal - (originalTotal * discount) / 100;
 
                           return discount > 0 ? (
                             <div className="flex flex-col items-end">
@@ -895,7 +884,7 @@ Thank you.`;
               </div>
 
               <button
-                onClick={() => dispatch(clearCart())}
+                onClick={handleClearCart}
                 className="w-full flex items-center justify-center"
                 style={{
                   marginTop: "16px",
@@ -1026,7 +1015,7 @@ Thank you.`;
           </div>
           {cartItems.length > 0 && (
             <button
-              onClick={() => dispatch(clearCart())}
+              onClick={handleClearCart}
               className="flex items-center flex-shrink-0"
               style={{
                 gap: "8px",
@@ -1175,14 +1164,14 @@ Thank you.`;
                               </span>
                             )}
                           </div>
-                          {(() => {
-                            const price = Number(item.price);
-                            const qty = Number(item.quantity);
-                            const discount = isDiscountActive(item) ? Number(item.discount || 0) : 0;
+                          {(() => {
+                            const price = Number(item.price);
+                            const qty = Number(item.quantity);
+                            const discount = isDiscountActive(item) ? Number(item.discount || 0) : 0;
 
-                            const originalTotal = price * qty;
-                            const discountedTotal =
-                              originalTotal - (originalTotal * discount) / 100;
+                            const originalTotal = price * qty;
+                            const discountedTotal =
+                              originalTotal - (originalTotal * discount) / 100;
 
                             return discount > 0 ? (
                               <div className="flex flex-col items-end">
@@ -1245,7 +1234,7 @@ Thank you.`;
                             }}
                           >
                             <button
-                              onClick={() => dispatch(removeCart(item.id))}
+                              onClick={() => handleRemoveCart(item.id)}
                               aria-label="Decrease quantity"
                               className="flex items-center justify-center"
                               style={{
@@ -1344,7 +1333,7 @@ Thank you.`;
                     >
                       <span style={{ color: "var(--color-body)" }}>Subtotal</span>
                       <span style={{ fontWeight: 700, color: "var(--color-ink)" }}>
-                        {money(subtotal)}
+                        {money(subtotalRounded)}
                       </span>
                     </div>
                     <div

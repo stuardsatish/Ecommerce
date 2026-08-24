@@ -14,10 +14,7 @@ import {
   PlusSquare as PlusIcon,
   ClipboardList as OrdersIcon,
 } from "lucide-react";
-import { signOut } from "firebase/auth";
-import { doc, updateDoc } from "firebase/firestore";
-
-import { auth, fireDB } from "../../context/FirebaseConfig";
+import { supabase } from "../../context/SupabaseConfig";
 import { clearUser } from "../../context/UserSlice";
 import useIsMobile from "../../hooks/useIsMobile";
 import { broadcastAuth, clearSession } from "../../utils/sessionUtils";
@@ -111,16 +108,15 @@ const MobileNav = () => {
 
   const handleLogout = useCallback(async () => {
     try {
-      const current = auth.currentUser;
-      if (current) {
+      if (user?.uid) {
         try {
-          await updateDoc(doc(fireDB, "users", current.uid), { activeSessionId: null });
+          await supabase.from("profiles").update({ active_session_id: null }).eq("id", user.uid);
         } catch (e) {
           console.log("Could not clear active session:", e);
         }
       }
       clearLocalSession();
-      await signOut(auth);
+      await supabase.auth.signOut();
       dispatch(clearUser());
       clearSession();
       broadcastAuth("logout");
@@ -129,7 +125,7 @@ const MobileNav = () => {
     } catch (error) {
       console.error("Logout Error:", error);
     }
-  }, [dispatch, navigate]);
+  }, [dispatch, navigate, user]);
 
   const go = (path) => {
     setMenuOpen(false);

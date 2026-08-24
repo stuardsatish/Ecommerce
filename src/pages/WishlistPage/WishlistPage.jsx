@@ -4,8 +4,10 @@ import { useNavigate } from "react-router-dom"
 import { removeWishlist } from "../../context/WishlistSlice"
 import { addCart } from "../../context/CartSlice"
 import { Trash2, ShoppingBag, ArrowRight, ArrowLeft, ChevronRight, Share2, ShoppingCart, X, Bell } from "lucide-react"
-import { collection, getDocs, getDoc, doc, query, where, orderBy, limit, addDoc, deleteDoc, serverTimestamp } from "firebase/firestore"
-import { fireDB, auth } from "../../context/FirebaseConfig"
+import { supabase } from "../../context/SupabaseConfig"
+import { mapProductRows } from "../../utils/supabaseProducts"
+import { upsertCartItem, nextAddQuantity } from "../../utils/supabaseCart"
+import { removeWishlistItem } from "../../utils/supabaseWishlist"
 import { toast } from "react-toastify"
 import useIsMobile from "../../hooks/useIsMobile"
 import Skeleton from "../../components/Common/Skeleton"
@@ -14,6 +16,8 @@ const WishlistPage = () => {
   const navigate = useNavigate()
   const dispatch = useDispatch()
   const wishlistItems = useSelector((state) => state.wishlist.wishlistItems)
+  const cartItems = useSelector((state) => state.cart.cartItems)
+  const user = useSelector((state) => state.user.user)
   // Mobile design renders below `lg`; the desktop redesign at lg+.
   const isMobile = useIsMobile(1024)
 
@@ -30,20 +34,25 @@ const WishlistPage = () => {
 
   const wishlistKey = wishlistItems.map(pidOf).join(",")
 
-  // Join each wishlist item with its live product doc (stock / mrp for badges).
+  // Join each wishlist item with its live product row (stock / mrp for badges).
   useEffect(() => {
     let active = true
     ;(async () => {
       setLoadingProducts(true)
       try {
-        const ids = [...new Set(wishlistItems.map(pidOf).filter(Boolean))]
-        const entries = await Promise.all(ids.map(async (pid) => {
-          try {
-            const snap = await getDoc(doc(fireDB, "products", String(pid)))
-            return [pid, snap.exists() ? snap.data() : {}]
-          } catch { return [pid, {}] }
-        }))
-        if (active) setProductMap(Object.fromEntries(entries))
+        const ids = [...new Set(wishlistItems.map(pidOf).filter(Boolean))].map(String)
+        if (!ids.length) {
+          if (active) setProductMap({})
+          return
+        }
+        const { data, error } = await supabase.from("products").select("*").in("id", ids)
+        if (error) throw error
+        const map = {}
+        mapProductRows(data).forEach((p) => { map[p.id] = p })
+        if (active) setProductMap(map)
+      } catch (e) {
+        console.log("wishlist product join failed:", e)
+        if (active) setProductMap({})
       } finally {
         if (active) setLoadingProducts(false)
       }
@@ -57,11 +66,17 @@ const WishlistPage = () => {
     ;(async () => {
       setLoadingRec(true)
       try {
-        let snap
-        try { snap = await getDocs(query(collection(fireDB, "products"), orderBy("rating", "desc"), limit(12))) }
-        catch { snap = await getDocs(query(collection(fireDB, "products"), limit(12))) }
+        let { data, error } = await supabase
+          .from("products")
+          .select("*")
+          .order("rating", { ascending: false })
+          .limit(12)
+        if (error) {
+          ({ data, error } = await supabase.from("products").select("*").limit(12))
+          if (error) throw error
+        }
         const wishIds = new Set(wishlistItems.map(pidOf).map(String))
-        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((p) => !wishIds.has(String(p.id))).slice(0, 4)
+        const list = mapProductRows(data).filter((p) => !wishIds.has(String(p.id))).slice(0, 4)
         if (active) setRecommended(list)
       } catch (e) {
         console.log("recommended fetch failed:", e)
@@ -89,35 +104,40 @@ const WishlistPage = () => {
   // the item was frozen at the moment it was saved, so if the product's photo
   // was changed since, the snapshot would keep showing the old one forever.
   const liveImageOf = (item) => {
-   const pid = pidOf(item)
-   const live = productMap[pid]
-   return (live && (live.thumbnail || live.image)) || item.thumbnail || item.image
+   const pid = pidOf(item)
+   const live = productMap[pid]
+   return (live && (live.thumbnail || live.image)) || item.thumbnail || item.image
   }
 
   /* ---------- DESKTOP handlers (reuse existing Redux actions) ---------- */
   const handleRemove = async (pid) => {
     dispatch(removeWishlist(pid)) // instant UI
+    if (!user?.uid) return
     try {
-      const uid = auth.currentUser?.uid
-      if (!uid) return
-      const snap = await getDocs(query(collection(fireDB, "wishlists"), where("userId", "==", uid)))
-      await Promise.all(
-        snap.docs.filter((d) => String(d.data().productId) === String(pid)).map((d) => deleteDoc(d.ref))
-      )
+      await removeWishlistItem(user.uid, pid)
     } catch (e) {
       console.log("wishlist remove persist failed:", e)
     }
   }
 
   const handleAddToCart = (item) => {
+    const pid = pidOf(item)
+    const qty = nextAddQuantity(cartItems, pid)
     dispatch(addCart(item))
+    upsertCartItem(user?.uid, item, qty)
     toast.success("Added to cart")
   }
 
   const handleMoveAll = () => {
     const inStock = wishlistItems.filter((i) => stockInfo(pidOf(i)).status !== "OUT")
     if (!inStock.length) { toast.info("No in-stock items to move."); return }
-    inStock.forEach((i) => { dispatch(addCart(i)); handleRemove(pidOf(i)) })
+    inStock.forEach((i) => {
+      const pid = pidOf(i)
+      const qty = nextAddQuantity(cartItems, pid)
+      dispatch(addCart(i))
+      upsertCartItem(user?.uid, i, qty)
+      handleRemove(pid)
+    })
     toast.success(`Moved ${inStock.length} item(s) to cart`)
     navigate("/cart")
   }
@@ -131,10 +151,11 @@ const WishlistPage = () => {
   }
 
   const handleNotify = async (pid) => {
-    const uid = auth.currentUser?.uid
+    const uid = user?.uid
     if (!uid) { navigate("/login"); return }
     try {
-      await addDoc(collection(fireDB, "stockAlerts"), { userId: uid, productId: String(pid), createdAt: serverTimestamp() })
+      const { error } = await supabase.from("stock_alerts").insert({ product_id: String(pid), user_id: uid })
+      if (error) throw error
       setAlertedIds((prev) => [...prev, String(pid)])
       toast.success("We'll notify you when it's back in stock")
     } catch (e) {
@@ -193,7 +214,7 @@ const WishlistPage = () => {
               return (
                 <div key={pid} className="relative bg-surface flex flex-col overflow-hidden" style={{ borderRadius: "12px", boxShadow: "0px 4px 20px rgba(26,43,60,0.05)" }}>
                   <button
-                    onClick={() => dispatch(removeWishlist(pid))}
+                    onClick={() => handleRemove(pid)}
                     aria-label="Remove from wishlist"
                     className="absolute z-20 flex items-center justify-center"
                     style={{ top: "12px", right: "12px", width: "32px", height: "32px", background: "color-mix(in srgb, var(--color-surface) 90%, transparent)", borderRadius: "9999px", backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)" }}
@@ -215,7 +236,7 @@ const WishlistPage = () => {
                     <div style={{ marginTop: "auto" }}>
                       <span style={{ color: "var(--color-ink)", fontWeight: 600, fontSize: "18px" }}>${Number(item.price || 0).toFixed(2)}</span>
                       <button
-                        onClick={() => { dispatch(addCart(item)); navigate("/cart") }}
+                        onClick={() => { handleAddToCart(item); navigate("/cart") }}
                         className="w-full flex items-center justify-center"
                         style={{ marginTop: "8px", height: "36px", borderRadius: "9999px", background: "var(--color-primary)", color: "var(--color-inverse)", fontWeight: 700, fontSize: "12px", letterSpacing: "0.6px", textTransform: "uppercase", gap: "6px" }}
                       >

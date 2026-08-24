@@ -1,6 +1,5 @@
 import { useState, useCallback } from "react"
-import { doc, setDoc, serverTimestamp } from "firebase/firestore"
-import { fireDB, auth } from "../../context/FirebaseConfig"
+import { callFunction } from "../../utils/edgeFunctions"
 import { toast } from "react-toastify"
 import { useDispatch, useSelector } from "react-redux"
 import { clearCart } from "../../context/CartSlice"
@@ -31,20 +30,11 @@ const C = {
 const INTER   = "'Inter', sans-serif"
 const MANROPE = "'Manrope', sans-serif"
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || ""
 
 /* ── helpers ────────────────────────────────────────────────────────────── */
 const money = (n) =>
   `₹${Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
-async function getAuthHeaders() {
-  const headers = { "Content-Type": "application/json" }
-  const user = auth.currentUser
-  if (user) {
-    try { headers.Authorization = `Bearer ${await user.getIdToken()}` } catch { /* */ }
-  }
-  return headers
-}
 
 /* ── simple CLIENT-SIDE parser for live preview (non-authoritative) ──────── */
 function clientParse(text) {
@@ -129,13 +119,7 @@ const CreateOrdersPage = () => {
     setResult(null)
 
     try {
-      const headers = await getAuthHeaders()
-      const res     = await fetch(`${API_BASE}/api/orders/manual-create`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ message, paymentStatus, allowPriceOverride }),
-      })
-      const data = await res.json().catch(() => ({}))
+      const { res, data } = await callFunction("orders-manual-create", { message, paymentStatus, allowPriceOverride })
 
       // Server refused because the pasted total ≠ the live catalog total.
       // Ask the admin to explicitly confirm the negotiated price, then retry.
@@ -154,24 +138,15 @@ const CreateOrdersPage = () => {
         setResult({ success: true, orderId: data.orderId, parsedOrder: data.parsedOrder })
         toast.success(`Order ${data.orderId} created successfully!`, { theme: "dark" })
 
-        // Clear the currently logged-in user's cart in Firestore and Redux, and broadcast it
-        const userUid = currentUser?.uid || auth.currentUser?.uid;
-        if (userUid) {
-          dispatch(clearCart());
-          broadcastAuth("cart-clear");
-          localStorage.setItem("cart-clear-trigger", Date.now().toString());
-          try {
-            await setDoc(
-              doc(fireDB, "carts", userUid),
-              { items: [], updatedAt: serverTimestamp() },
-              { merge: true }
-            );
-          } catch (e) {
-            console.error("Failed to clear Firestore cart on success:", e);
-          }
-        }
+        // Clear the currently logged-in (admin) user's cart in Redux and broadcast it.
+   const userUid = currentUser?.uid
+   if (userUid) {
+    dispatch(clearCart())
+    broadcastAuth("cart-clear")
+    localStorage.setItem("cart-clear-trigger", Date.now().toString())
+   }
 
-        // Reload the page after a short delay so the toast is visible
+   // Reload the page after a short delay so the toast is visible
         setTimeout(() => {
           window.location.reload();
         }, 1000);

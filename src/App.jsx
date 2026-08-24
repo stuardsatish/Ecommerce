@@ -12,6 +12,7 @@ const ProductDetail = lazy(() => import("./pages/ProductDetail/ProductDetail"))
 const CartPage = lazy(() => import("./pages/CartPage/CartPage"))
 const LoginPage = lazy(() => import("./pages/LoginPage/LoginPage"))
 const SignupPage = lazy(() => import("./pages/SignupPage/SignupPage"))
+const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage/ResetPasswordPage"))
 const AdminOrdersPage = lazy(() => import("./pages/AdminOrdersPage/AdminOrdersPage"))
 const WishlistPage = lazy(() => import("./pages/WishlistPage/WishlistPage"))
 const UsersPage = lazy(() => import("./pages/UsersPage/UsersPage"))
@@ -39,26 +40,13 @@ import useSessionWatcher from "./hooks/useSessionWatcher"
 import { ToastContainer } from "react-toastify"
 import "react-toastify/dist/ReactToastify.css"
 
-import { onAuthStateChanged } from "firebase/auth"
-import { auth, fireDB } from "./context/FirebaseConfig"
-import { serverTimestamp } from "firebase/firestore"
+import { supabase } from "./context/SupabaseConfig"
 
 import { setUser, clearUser } from "./context/UserSlice"
 import { setCart } from "./context/CartSlice"
 import { setWishlist } from "./context/WishlistSlice"
 
 import { startLoading, stopLoading } from "./context/LoadingSlice"
-
-import {
-  doc,
-  getDoc,
-  setDoc,
-  onSnapshot,
-  collection,
-  getDocs,
-  query,
-  where
-} from "firebase/firestore"
 
 import UserRoute from "./routes/UserRoute"
 import AdminRoute from "./routes/AdminRoute"
@@ -115,251 +103,211 @@ const App = () => {
 
     dispatch(startLoading())
 
-    let unsubCart = null  // will hold the onSnapshot unsubscribe for cart
+    let unsubCart = null  // will hold the Realtime channel unsubscribe for cart_items
+    let cancelled = false
 
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-
-      // Clean up any previous cart listener when auth state changes
+    // Cart is per-row in `cart_items` now (one row per user+product) instead
+    // of a single jsonb doc, so every event just re-selects the full set for
+    // this user — cheap, and it always re-joins `products` for live
+    // price/discount/expiry (mirrors what the old onSnapshot handler did by
+    // fetching the whole product catalog on every cart change).
+    const loadCartAndWishlist = async (uid) => {
       if (unsubCart) { unsubCart(); unsubCart = null }
 
-      if (user) {
+      const fetchCart = async () => {
+        const { data, error } = await supabase
+          .from("cart_items")
+          .select("quantity, product_id, products(title, price, discount, discount_expiry, stock, thumbnail, image, category)")
+          .eq("user_id", uid)
 
-        try {
-
-          // USER DATA
-          const userRef = doc(fireDB, "users", user.uid)
-          const userSnap = await getDoc(userRef)
-
-          if (userSnap.exists()) {
-
-            const userData = userSnap.data()
-
-            dispatch(setUser({
-              ...userData,
-              uid: user.uid,
-              role: userData.role,
-              createdAt: userData.createdAt
-                ? userData.createdAt.toDate().toISOString()
-                : null,
-              lastOrderDate: userData.lastOrderDate
-                ? userData.lastOrderDate.toDate().toISOString()
-                : null,
-              lastLoginAt: userData.lastLoginAt?.toDate
-                ? userData.lastLoginAt.toDate().toISOString()
-                : (userData.lastLoginAt || null)
-            }))
-
-          }
-
-          // LOAD CART — real-time listener so Firestore changes (e.g. admin
-          // clearing the cart after creating an order) are reflected instantly
-          // across all tabs without needing BroadcastChannel or page reloads.
-          const cartRef = doc(fireDB, "carts", user.uid)
-          unsubCart = onSnapshot(cartRef, async (cartSnap) => {
-            if (cartSnap.exists()) {
-              const items = cartSnap.data().items || []
-
-              // Fetch live product catalog once to get up-to-date discount/expiry.
-              // This ensures expired discounts are never shown even if the cart
-              // document was saved before the discountExpiry field existed.
-              let productMap = {}
-              try {
-                const prodSnap = await getDocs(collection(fireDB, "products"))
-                prodSnap.docs.forEach(d => { productMap[d.id] = d.data() })
-              } catch (e) {
-                console.warn("Could not fetch products for cart enrichment:", e)
-              }
-
-              const formattedItems = items.map(item => {
-                const liveProduct = productMap[item.productId] || {}
-                return {
-                  id: item.productId,
-                  title: item.title,
-                  price: item.price,
-                  quantity: item.quantity,
-                  image: item.image,
-                  stock: item.stock,
-                  category: item.category || "general",
-                  // Always use live product discount & expiry so expired discounts
-                  // don't persist in the cart when a product's discount changes.
-                  discount: Number(liveProduct.discount ?? item.discount ?? 0),
-                  discountExpiry: liveProduct.discountExpiry ?? item.discountExpiry ?? "",
-                }
-              })
-              
-              if (!areCartItemsEqual(formattedItems, cartItemsRef.current)) {
-                dispatch(setCart(formattedItems))
-              }
-            } else {
-              if (cartItemsRef.current.length > 0) {
-                dispatch(setCart([]))
-              }
-            }
-          })
-
-          // LOAD WISHLIST
-          const wishlistRef = collection(fireDB, "wishlists")
-          const q = query(wishlistRef, where("userId", "==", user.uid))
-          const wishlistSnap = await getDocs(q)
-
-          const wishlistData = wishlistSnap.docs.map((doc) => {
-
-            const data = doc.data()
-
-            return {
-              docId: doc.id,
-              ...data,
-              addedAt: data.addedAt
-                ? data.addedAt.toDate().toISOString()
-                : null
-            }
-
-          })
-
-          dispatch(setWishlist(wishlistData))
-
-        } catch (error) {
-
-          console.error("Error loading user data:", error)
-
+        if (error) {
+          console.error("Error loading cart:", error)
+          return
         }
 
-      } else {
+        const formattedItems = (data || []).map((row) => {
+          const p = row.products || {}
+          return {
+            id: row.product_id,
+            title: p.title || "",
+            price: Number(p.price) || 0,
+            quantity: row.quantity,
+            image: p.thumbnail || p.image || "",
+            stock: p.stock || 0,
+            category: p.category || "general",
+            // Always use live product discount & expiry so expired discounts
+            // don't persist in the cart when a product's discount changes.
+            discount: Number(p.discount || 0),
+            discountExpiry: p.discount_expiry || "",
+          }
+        })
 
+        if (!areCartItemsEqual(formattedItems, cartItemsRef.current)) {
+          dispatch(setCart(formattedItems))
+        }
+      }
+
+      await fetchCart()
+
+      const channel = supabase
+        .channel(`cart-items-${uid}`)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "cart_items", filter: `user_id=eq.${uid}` },
+          fetchCart
+        )
+        .subscribe()
+
+      unsubCart = () => supabase.removeChannel(channel)
+
+      const { data: wishlistRows, error: wishlistError } = await supabase
+        .from("wishlist_items")
+        .select("*")
+        .eq("user_id", uid)
+
+      if (wishlistError) {
+        console.error("Error loading wishlist:", wishlistError)
+      } else {
+        const wishlistData = (wishlistRows || []).map((row) => ({
+          id: row.product_id,
+          userId: row.user_id,
+          productId: row.product_id,
+          title: row.title,
+          image: row.image,
+          price: row.price,
+          category: row.category,
+          addedAt: row.added_at,
+        }))
+        dispatch(setWishlist(wishlistData))
+      }
+    }
+
+    // Fetch the `profiles` row (replaces the old users/{uid} Firestore doc)
+    // and hydrate Redux + cart/wishlist for a signed-in Supabase session.
+    const handleSession = async (session) => {
+      if (cancelled) return
+
+      if (session?.user) {
+        try {
+          const { data: profile, error } = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("id", session.user.id)
+            .single()
+
+          if (error) throw error
+
+          dispatch(setUser({ ...profile, uid: session.user.id }))
+          await loadCartAndWishlist(session.user.id)
+        } catch (error) {
+          console.error("Error loading user data:", error)
+        }
+      } else {
+        if (unsubCart) { unsubCart(); unsubCart = null }
         dispatch(clearUser())
         dispatch(setCart([]))
         dispatch(setWishlist([]))
-
       }
 
       dispatch(stopLoading())
       setAuthChecked(true)
+    }
 
+    // Initial load, then react to sign-in/sign-out/token-refresh events.
+    supabase.auth.getSession().then(({ data: { session } }) => handleSession(session))
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      // INITIAL_SESSION is already handled by getSession().then() above; skip it
+      // here to avoid double-calling handleSession (and double-subscribing the
+      // cart Realtime channel) on every page load with an active session.
+      if (event === 'INITIAL_SESSION') return
+      handleSession(session)
     })
 
     return () => {
-      unsubscribe()
+      cancelled = true
+      subscription.unsubscribe()
       if (unsubCart) unsubCart()
     }
 
   }, [dispatch])
 
-  // AUTO SAVE CART TO FIRESTORE
-  useEffect(() => {
+  if (!authChecked) {
+    return <Loader />
+  }
 
-    const user = auth.currentUser
-    if (!user) return
+  return (
 
-    const saveCart = async () => {
+    <BrowserRouter>
 
-      try {
+      <ToastContainer position="top-right" autoClose={3000} />
 
-        await setDoc(
-          doc(fireDB, "carts", user.uid),
-          {
-            items: cartItems.map(item => ({
-              productId: item.id,
-              title: item.title,
-              price: item.price,
-              quantity: item.quantity,
-              image: item.thumbnail || item.image,
-              stock: item.stock || 0,
-              category: item.category || "general",
-              discount: Number(item.discount || 0),
-              discountExpiry: item.discountExpiry || "",
-            })),
-            updatedAt: serverTimestamp()
-          },
-          { merge: true }
-        )
+      <SessionManager />
 
-      } catch (error) {
+      <Navbar />
+      <MobileNav />
+      <NavbarSpacer />
 
-        console.error("Error saving cart:", error)
+      <Suspense fallback={<Loader />}>
+        <Routes>
 
-      }
+        {/* PUBLIC */}
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignupPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
 
-    }
-
-    saveCart()
-
-  }, [cartItems])
-
-  if (!authChecked) {
-    return <Loader />
-  }
-
-  return (
-
-    <BrowserRouter>
-
-      <ToastContainer position="top-right" autoClose={3000} />
-
-      <SessionManager />
-
-      <Navbar />
-      <MobileNav />
-      <NavbarSpacer />
-
-      <Suspense fallback={<Loader />}>
-        <Routes>
-
-        {/* PUBLIC */}
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/signup" element={<SignupPage />} />
-
-        {/* NEW PUBLIC ROUTES */}
-        <Route path="/" element={<LandingPage />} />
-        
-        <Route path="/process-details" element={<ProcessDetailsPage />} />
-        <Route path="/products" element={<ProductsPage />} />
-        <Route path="/product/:id" element={<ProductDetail />} />
+        {/* NEW PUBLIC ROUTES */}
+        <Route path="/" element={<LandingPage />} />
+       
+        <Route path="/process-details" element={<ProcessDetailsPage />} />
+        <Route path="/products" element={<ProductsPage />} />
+        <Route path="/product/:id" element={<ProductDetail />} />
 
 
 
-        {/* USER PROTECTED ROUTES */}
-        <Route path="/cart" element={<UserRoute><CartPage /></UserRoute>} />
-        <Route path="/wishlist" element={<UserRoute><WishlistPage /></UserRoute>} />
-        <Route path="/services" element={<UserRoute><ServicesPage /></UserRoute>} />
-        <Route path="/userorders" element={<UserRoute><UserOrdersPage /></UserRoute>} />
-        <Route path="/userpastorders" element={<UserRoute><UserPastOrdersPage /></UserRoute>} />
-        <Route path="/order/:id" element={<UserRoute><OrderDetailPage /></UserRoute>} />
-        <Route path="/myprofile" element={<UserRoute><MyProfile /></UserRoute>} />
+        {/* USER PROTECTED ROUTES */}
+        <Route path="/cart" element={<UserRoute><CartPage /></UserRoute>} />
+        <Route path="/wishlist" element={<UserRoute><WishlistPage /></UserRoute>} />
+        <Route path="/services" element={<UserRoute><ServicesPage /></UserRoute>} />
+        <Route path="/userorders" element={<UserRoute><UserOrdersPage /></UserRoute>} />
+        <Route path="/userpastorders" element={<UserRoute><UserPastOrdersPage /></UserRoute>} />
+        <Route path="/order/:id" element={<UserRoute><OrderDetailPage /></UserRoute>} />
+        <Route path="/myprofile" element={<UserRoute><MyProfile /></UserRoute>} />
 
 
-        <Route path="/video" element={<UserRoute><ScrollSequence /></UserRoute>} />
+        <Route path="/video" element={<UserRoute><ScrollSequence /></UserRoute>} />
 
-    
+   
 
-        {/* ADMIN ROUTES */}
-        <Route path="/admin/users" element={<AdminRoute><UsersPage /></AdminRoute>} />
+        {/* ADMIN ROUTES */}
+        <Route path="/admin/users" element={<AdminRoute><UsersPage /></AdminRoute>} />
 
-        <Route path="/admin/add-product" element={<AdminRoute><AddProductPage /></AdminRoute>} />
+        <Route path="/admin/add-product" element={<AdminRoute><AddProductPage /></AdminRoute>} />
 
-        <Route path="/admin/allUsersOrdersAnalytics" element={<AdminRoute><AllUsersOrdersAnalytics /></AdminRoute>} />
+        <Route path="/admin/allUsersOrdersAnalytics" element={<AdminRoute><AllUsersOrdersAnalytics /></AdminRoute>} />
 
-        <Route path="/admin/allProductsOrdersAnalytics" element={<AdminRoute><AllProductsOrdersAnalytics /></AdminRoute>} />
+        <Route path="/admin/allProductsOrdersAnalytics" element={<AdminRoute><AllProductsOrdersAnalytics /></AdminRoute>} />
 
-        <Route path="/admin/adminUploadOrders" element={<AdminRoute><AdminUploadOrders /></AdminRoute>} />
+        <Route path="/admin/adminUploadOrders" element={<AdminRoute><AdminUploadOrders /></AdminRoute>} />
 
-        <Route path="/admin/myorders" element={<AdminRoute><AdminOrdersPage /></AdminRoute>} />
+        <Route path="/admin/myorders" element={<AdminRoute><AdminOrdersPage /></AdminRoute>} />
 
-        <Route path="/admin/add-discount" element={<AdminRoute><AddDiscountPage /></AdminRoute>} />
+        <Route path="/admin/add-discount" element={<AdminRoute><AddDiscountPage /></AdminRoute>} />
 
-        <Route path="/admin/edit-product/:id" element={<AdminRoute><EditProductPage /></AdminRoute>} />
+        <Route path="/admin/edit-product/:id" element={<AdminRoute><EditProductPage /></AdminRoute>} />
 
-        <Route path="/admin/createOrders" element={<AdminRoute><CreateOrdersPage /></AdminRoute>} />
+        <Route path="/admin/createOrders" element={<AdminRoute><CreateOrdersPage /></AdminRoute>} />
 
-        <Route path="/admin/billing" element={<AdminRoute><BillingPage /></AdminRoute>} />
+        <Route path="/admin/billing" element={<AdminRoute><BillingPage /></AdminRoute>} />
 
-        <Route path="/admin/optimization" element={<AdminRoute><Optimization /></AdminRoute>} />
+        <Route path="/admin/optimization" element={<AdminRoute><Optimization /></AdminRoute>} />
 
-      </Routes>
-      </Suspense>
+      </Routes>
+      </Suspense>
 
-    </BrowserRouter>
+    </BrowserRouter>
 
-  )
+  )
 
 }
 

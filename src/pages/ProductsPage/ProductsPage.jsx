@@ -36,17 +36,10 @@ import {
     Filter,
 } from "lucide-react";
 
-import {
-    collection,
-    getDocs,
-    doc,
-    setDoc,
-    deleteDoc,
-    serverTimestamp,
-    query,
-    where,
-} from "firebase/firestore";
-import { auth, fireDB } from "../../context/FirebaseConfig";
+import { supabase } from "../../context/SupabaseConfig";
+import { mapProductRows } from "../../utils/supabaseProducts";
+import { upsertCartItem, decrementOrRemoveCartItem, nextAddQuantity, nextRemoveQuantity } from "../../utils/supabaseCart";
+import { addWishlistItem, removeWishlistItem } from "../../utils/supabaseWishlist";
 
 /* ============================================================
    DESKTOP DESIGN HELPERS
@@ -111,7 +104,6 @@ const NewProductCard = ({
 }) => {
     const navigate = useNavigate();
     const name = getName(product);
-    console.log(product);
     const mrp = getMrp(product);
     const discount = getDiscount(product);
     const discountedPrice = getPrice(product);
@@ -122,7 +114,7 @@ const NewProductCard = ({
     const isOut = stock <= 0;
 
     return (
-        <div className="product-card flex flex-col bg-surface border border-[var(--color-border-strong)] rounded-xl overflow-hidden shadow-[0px_4px_12px_rgba(0,0,0,0.05)]">
+        <div data-pid={product.id} className="product-card flex flex-col bg-surface border border-[var(--color-border-strong)] rounded-xl overflow-hidden shadow-[0px_4px_12px_rgba(0,0,0,0.05)]">
             {/* Image area */}
             <div
                 className="relative cursor-pointer"
@@ -327,6 +319,7 @@ const ProductsPage = () => {
     const products = useSelector((state) => state.products.product);
     const cartItems = useSelector((state) => state.cart.cartItems);
     const wishlistItems = useSelector((state) => state.wishlist.wishlistItems);
+    const user = useSelector((state) => state.user.user);
     const [loading, setLoading] = useState(false);
     const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
 
@@ -357,6 +350,9 @@ const ProductsPage = () => {
     const sidebarRef = useRef(null);
     const chipsRef = useRef(null);
     const gridRef = useRef(null);
+    // Tracks product ids that have already played their entrance animation, so
+    // switching sort/filter doesn't re-flash cards that are already on screen.
+    const animatedCardIdsRef = useRef(new Set());
 
     // CLEAR FILTERS (mobile)
     const clearFilters = useCallback(() => {
@@ -372,32 +368,29 @@ const ProductsPage = () => {
         try {
             setLoading(true);
 
-            const productSnapshot = await getDocs(collection(fireDB, "products"));
-            const reviewsSnapshot = await getDocs(collection(fireDB, "reviews"));
-            const reviewsData = reviewsSnapshot.docs.map((doc) => doc.data());
+            const { data: productRows, error: productError } = await supabase
+                .from("products")
+                .select("*");
+            if (productError) throw productError;
+
+            const { data: reviewsData } = await supabase.from("reviews").select("product_id, rating");
 
             const ratingsMap = {};
-            reviewsData.forEach((review) => {
-                const pid = String(review.productId);
+            (reviewsData || []).forEach((review) => {
+                const pid = String(review.product_id);
                 if (!ratingsMap[pid]) ratingsMap[pid] = { total: 0, count: 0 };
                 ratingsMap[pid].total += Number(review.rating || 0);
                 ratingsMap[pid].count += 1;
             });
 
-            const productArray = productSnapshot.docs.map((doc) => {
-                const data = doc.data();
-                const pid = doc.id;
-                const ratingInfo = ratingsMap[pid];
+            const productArray = mapProductRows(productRows).map((p) => {
+                const ratingInfo = ratingsMap[p.id];
                 const avgRating = ratingInfo ? ratingInfo.total / ratingInfo.count : 0;
 
                 return {
-                    id: pid,
-                    ...data,
+                    ...p,
                     rating: avgRating,
                     reviewCount: ratingInfo ? ratingInfo.count : 0,
-                    createdAt: data.createdAt
-                        ? data.createdAt.toDate().toISOString()
-                        : null,
                 };
             });
 
@@ -604,18 +597,24 @@ const ProductsPage = () => {
 
     const handleAddToCart = useCallback(
         (product) => {
-            if (!auth.currentUser) {
+            if (!user) {
                 navigate("/login");
                 return;
             }
+            const qty = nextAddQuantity(cartItems, product.id);
             dispatch(addCart(product));
+            upsertCartItem(user.uid, product, qty);
         },
-        [dispatch, navigate],
+        [dispatch, navigate, user, cartItems],
     );
 
     const handleDecrement = useCallback(
-        (product) => dispatch(removeCart(String(product.id))),
-        [dispatch],
+        (product) => {
+            const qty = nextRemoveQuantity(cartItems, product.id);
+            dispatch(removeCart(String(product.id)));
+            decrementOrRemoveCartItem(user?.uid, product.id, qty);
+        },
+        [dispatch, cartItems, user],
     );
 
     const isWishlisted = useCallback(
@@ -625,25 +624,15 @@ const ProductsPage = () => {
 
     const handleToggleWishlist = useCallback(
         async (product) => {
-            const user = auth.currentUser;
             if (!user) {
                 navigate("/login");
                 return;
             }
             const productId = String(product.id);
             try {
-                const wishlistRef = collection(fireDB, "wishlists");
-                const snapshot = await getDocs(
-                    query(wishlistRef, where("userId", "==", user.uid)),
-                );
-                const existing = snapshot.docs.find(
-                    (d) =>
-                        d.data().userId === user.uid && d.data().productId === productId,
-                );
-
-                if (existing) {
+                if (isWishlisted(productId)) {
                     dispatch(removeWishlist(productId));
-                    await deleteDoc(doc(fireDB, "wishlists", existing.id));
+                    await removeWishlistItem(user.uid, productId);
                 } else {
                     const reduxItem = {
                         userId: user.uid,
@@ -656,16 +645,13 @@ const ProductsPage = () => {
                         addedAt: new Date().toISOString(),
                     };
                     dispatch(addWishlist(reduxItem));
-                    await setDoc(doc(collection(fireDB, "wishlists")), {
-                        ...reduxItem,
-                        addedAt: serverTimestamp(),
-                    });
+                    await addWishlistItem(user.uid, product);
                 }
             } catch (error) {
                 console.log("Wishlist error:", error);
             }
         },
-        [dispatch, navigate],
+        [dispatch, navigate, user, isWishlisted],
     );
 
     const toTitleCase = (text) => {
@@ -746,23 +732,32 @@ const ProductsPage = () => {
     useGSAP(
         () => {
             const cards = gridRef.current?.querySelectorAll(".product-card");
-            if (cards?.length) {
-                gsap.fromTo(
-                    cards,
-                    { y: 20, opacity: 0 },
-                    {
-                        y: 0,
-                        opacity: 1,
-                        duration: 0.35,
-                        stagger: 0.05,
-                        ease: "power2.out",
-                        clearProps: "opacity,transform",
-                    }
-                );
-            }
+            if (!cards?.length) return;
+
+            // Only fade in cards that haven't been shown yet — otherwise switching
+            // sort/filters re-hides (opacity: 0) cards already on screen, which
+            // reads as a flicker/flash rather than a smooth transition.
+            const newCards = Array.from(cards).filter(
+                (el) => !animatedCardIdsRef.current.has(el.dataset.pid),
+            );
+            if (!newCards.length) return;
+
+            newCards.forEach((el) => animatedCardIdsRef.current.add(el.dataset.pid));
+            gsap.fromTo(
+                newCards,
+                { y: 20, opacity: 0 },
+                {
+                    y: 0,
+                    opacity: 1,
+                    duration: 0.35,
+                    stagger: 0.05,
+                    ease: "power2.out",
+                    clearProps: "opacity,transform",
+                }
+            );
         },
         {
-            dependencies: [activeChip, deskSort, applyTick],
+            dependencies: [activeChip, deskSort, applyTick, loading],
             scope: gridRef,
         },
     );

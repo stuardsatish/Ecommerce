@@ -1,16 +1,38 @@
-import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
-import { fireDB } from "../context/FirebaseConfig";
+import { supabase } from "../context/SupabaseConfig";
 
 /**
- * Reads payment gateway configurations from settings/paymentSettings document.
- * Returns defaults if document does not exist.
+ * Reads a settings row's jsonb `data` column by id, or null if not found.
+ */
+const getSettingsData = async (id) => {
+  const { data, error } = await supabase
+    .from("settings")
+    .select("data")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  return data?.data || null;
+};
+
+/**
+ * Upserts a settings row, merging `patch` onto whatever data is already
+ * stored (read-modify-write) so partial updates don't drop existing keys.
+ */
+const upsertSettingsData = async (id, patch) => {
+  const existing = await getSettingsData(id);
+  const merged = { ...(existing || {}), ...patch };
+  const { error } = await supabase
+    .from("settings")
+    .upsert({ id, data: merged, updated_at: new Date().toISOString() });
+  if (error) throw error;
+};
+
+/**
+ * Reads payment gateway configurations from the settings row id='paymentSettings'.
+ * Returns defaults if the row does not exist.
  */
 export const getPaymentSettings = async () => {
-  const docRef = doc(fireDB, "settings", "paymentSettings");
-  const docSnap = await getDoc(docRef);
-  if (docSnap.exists()) {
-    return docSnap.data();
-  }
+  const data = await getSettingsData("paymentSettings");
+  if (data) return data;
   return {
     whatsappPayment: true,
     razorpayPayment: true,
@@ -19,28 +41,23 @@ export const getPaymentSettings = async () => {
 };
 
 /**
- * Saves payment settings to settings/paymentSettings document in Firestore.
+ * Saves payment settings to the settings row id='paymentSettings'.
  */
 export const savePaymentSettings = async (settings) => {
-  const docRef = doc(fireDB, "settings", "paymentSettings");
-  await setDoc(docRef, {
+  await upsertSettingsData("paymentSettings", {
     whatsappPayment: !!settings.whatsappPayment,
     razorpayPayment: !!settings.razorpayPayment,
     codPayment: !!settings.codPayment,
-    updatedAt: serverTimestamp(),
-  }, { merge: true });
+  });
 };
 
 /**
- * Reads invoice customization details from settings/invoiceSettings document.
- * Returns empty/default values if document does not exist.
+ * Reads invoice customization details from the settings row id='invoiceSettings'.
+ * Returns empty/default values if the row does not exist.
  */
 export const getInvoiceSettings = async () => {
-  const docRef = doc(fireDB, "settings", "invoiceSettings");
-  const docSnap = await getDoc(docRef);
-  if (docSnap.exists()) {
-    return docSnap.data();
-  }
+  const data = await getSettingsData("invoiceSettings");
+  if (data) return data;
   return {
     companyName: "Nexus Commerce Pvt. Ltd.",
     address: "12 Industrial Layout, Whitefield, Bengaluru, Karnataka 560066",
@@ -59,11 +76,10 @@ export const getInvoiceSettings = async () => {
 };
 
 /**
- * Saves invoice customization details to settings/invoiceSettings document in Firestore.
+ * Saves invoice customization details to the settings row id='invoiceSettings'.
  */
 export const saveInvoiceSettings = async (settings) => {
-  const docRef = doc(fireDB, "settings", "invoiceSettings");
-  await setDoc(docRef, {
+  await upsertSettingsData("invoiceSettings", {
     companyName: (settings.companyName || "").trim(),
     address: (settings.address || "").trim(),
     mobile: (settings.mobile || "").trim(),
@@ -77,20 +93,16 @@ export const saveInvoiceSettings = async (settings) => {
     supportPhone: (settings.supportPhone || "").trim(),
     upiId: (settings.upiId || "").trim(),
     logo: (settings.logo || "").trim(),
-    updatedAt: serverTimestamp(),
-  }, { merge: true });
+  });
 };
 
 /**
- * Reads shipping estimate settings from settings/shippingSettings document.
- * Returns defaults (threshold: 500, cost: 49) if document does not exist.
+ * Reads shipping estimate settings from the settings row id='shippingSettings'.
+ * Returns defaults (threshold: 500, cost: 49) if the row does not exist.
  */
 export const getShippingSettings = async () => {
-  const docRef = doc(fireDB, "settings", "shippingSettings");
-  const docSnap = await getDoc(docRef);
-  if (docSnap.exists()) {
-    return docSnap.data();
-  }
+  const data = await getSettingsData("shippingSettings");
+  if (data) return data;
   return {
     freeShippingThreshold: 500,
     shippingCost: 49,
@@ -98,39 +110,31 @@ export const getShippingSettings = async () => {
 };
 
 /**
- * Saves shipping estimate settings to settings/shippingSettings document in Firestore.
+ * Saves shipping estimate settings to the settings row id='shippingSettings'.
  */
 export const saveShippingSettings = async (settings) => {
-  const docRef = doc(fireDB, "settings", "shippingSettings");
-  await setDoc(docRef, {
+  await upsertSettingsData("shippingSettings", {
     freeShippingThreshold: Number(settings.freeShippingThreshold) || 500,
     shippingCost: Number(settings.shippingCost) || 49,
-    updatedAt: serverTimestamp(),
-  }, { merge: true });
+  });
 };
 
 /**
- * Reads GST settings from settings/gstSettings document.
- * Defaults to { gstEnabled: true } so existing behaviour is preserved
- * for stores that have never touched this setting.
- */
+ * Reads GST settings from the settings row id='gstSettings'.
+ * Defaults to { gstEnabled: true } so existing behaviour is preserved
+ * for stores that have never touched this setting.
+ */
 export const getGstSettings = async () => {
-  const docRef = doc(fireDB, "settings", "gstSettings");
-  const docSnap = await getDoc(docRef);
-  if (docSnap.exists()) {
-    const data = docSnap.data();
-    return { gstEnabled: data.gstEnabled !== false }; // default true
-  }
-  return { gstEnabled: true };
+  const data = await getSettingsData("gstSettings");
+  if (data) return { gstEnabled: data.gstEnabled !== false }; // default true
+  return { gstEnabled: true };
 };
 
 /**
- * Saves GST settings to settings/gstSettings document in Firestore.
- */
+ * Saves GST settings to the settings row id='gstSettings'.
+ */
 export const saveGstSettings = async (settings) => {
-  const docRef = doc(fireDB, "settings", "gstSettings");
-  await setDoc(docRef, {
-    gstEnabled: settings.gstEnabled !== false,
-    updatedAt: serverTimestamp(),
-  }, { merge: true });
+  await upsertSettingsData("gstSettings", {
+    gstEnabled: settings.gstEnabled !== false,
+  });
 };

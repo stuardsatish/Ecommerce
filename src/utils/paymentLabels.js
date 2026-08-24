@@ -43,4 +43,4 @@ export const isPendingPayment = (order) => {
   const method = String(order?.paymentMethod || "").toLowerCase()
   const status = String(order?.paymentStatus || "").toLowerCase()
   return (method === "cod" || method === "whatsapp") && status === "pending"
-}
+}

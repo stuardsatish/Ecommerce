@@ -1,14 +1,8 @@
 import { useEffect, useState, useRef } from "react"
-import {
-  collection,
-  getDocs,
-  doc,
-  getDoc,
-  query,
-  where
-} from "firebase/firestore"
 
-import { fireDB } from "../../context/FirebaseConfig"
+import { supabase } from "../../context/SupabaseConfig"
+import { mapOrderRows } from "../../utils/supabaseOrders"
+import { upsertCartItem, nextAddQuantity } from "../../utils/supabaseCart"
 import { useSelector, useDispatch } from "react-redux"
 import { useNavigate } from "react-router-dom"
 import { addCart } from "../../context/CartSlice"
@@ -26,12 +20,13 @@ import OrderCardSkeleton from "../../features/orders/OrderCardSkeleton"
 const UserPastOrdersPage = () => {
 
   const user = useSelector((state) => state.user.user)
+  const cartItems = useSelector((state) => state.cart.cartItems)
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const isMobile = useIsMobile(1024)
 
   const [userData, setUserData] = useState(null)
-  const [orders, setOrders] = useState([])       // delivered-only (mobile)
+  const [orders, setOrders] = useState([])       // delivered-only (mobile)
   const [allOrders, setAllOrders] = useState([]) // all past: delivered + cancelled (desktop tabs)
   const [activeTab, setActiveTab] = useState("ALL")
   const [loading, setLoading] = useState(true)
@@ -53,33 +48,30 @@ const UserPastOrdersPage = () => {
   const containerRef = useRef(null)
 
 
-/* ---------------- FETCH USER ---------------- */
+  /* ---------------- FETCH USER ---------------- */
 
   useEffect(() => {
     const fetchUser = async () => {
       if (!user?.uid) return
-      const ref = doc(fireDB, "users", user.uid)
-      const snap = await getDoc(ref)
-      if (snap.exists()) {
-        setUserData(snap.data())
-      }
+      const { data } = await supabase.from("profiles").select("*").eq("id", user.uid).single()
+      if (data) setUserData(data)
     }
     fetchUser()
   }, [user])
 
 
-/* ---------------- FETCH COMPLETED ORDERS ---------------- */
+  /* ---------------- FETCH COMPLETED ORDERS ---------------- */
 
   useEffect(() => {
     const fetchOrders = async () => {
       if (!user?.uid) return
       setLoading(true)
       try {
-        const q = query(
-          collection(fireDB, "orders"),
-          where("userId", "==", user.uid)
-        )
-        const snap = await getDocs(q)
+        const { data: rows, error } = await supabase
+          .from("orders")
+          .select("*, order_items(*)")
+          .eq("user_id", user.uid)
+        if (error) throw error
 
         const toJsDate = (v) => {
           if (!v) return null
@@ -90,37 +82,32 @@ const UserPastOrdersPage = () => {
         }
 
         // Past orders = delivered + cancelled
-        const rawOrders = snap.docs
-          .map(d => ({ id: d.id, ...d.data() }))
-          .filter(o => {
-            const s = (o.orderStatus || "").toLowerCase()
-            return ["delivered", "cancelled"].includes(s)
-          })
+        const rawOrders = mapOrderRows(rows).filter((o) => {
+          const s = (o.orderStatus || "").toLowerCase()
+          return ["delivered", "cancelled"].includes(s)
+        })
 
-        // Enrich products with fresh thumbnail/image from products collection
-        const enrichedOrders = await Promise.all(rawOrders.map(async (order) => {
-          if (!order.products) return order
-          const enrichedProducts = await Promise.all(order.products.map(async (item) => {
-            if (!item.productId) return item
-            const productRef = doc(fireDB, "products", item.productId)
-            const productSnap = await getDoc(productRef)
-            if (productSnap.exists()) {
-              const productData = productSnap.data()
-              const freshImage = productData.thumbnail || productData.image
-              return {
-                ...item,
-                thumbnail: freshImage,
-                image: freshImage,
-                category: productData.category || "general",
-                stock: productData.stock || 0
-              }
+        const productIds = [...new Set(rawOrders.flatMap((order) => (order.products || []).map((item) => item.productId)).filter(Boolean))]
+        let productById = {}
+        if (productIds.length) {
+          const { data: pRows } = await supabase.from("products").select("id, thumbnail, image, category, stock").in("id", productIds)
+            ; (pRows || []).forEach((p) => { productById[p.id] = p })
+        }
+        const enrichedOrders = rawOrders.map((order) => ({
+          ...order,
+          products: (order.products || []).map((item) => {
+            const pd = item.productId ? productById[item.productId] : null
+            if (!pd) return item
+            return {
+              ...item,
+              thumbnail: pd.thumbnail || pd.image,
+              image: pd.thumbnail || pd.image,
+              category: pd.category || "general",
+              stock: pd.stock || 0,
             }
-            return item
-          }))
-          return { ...order, products: enrichedProducts }
+          }),
         }))
 
-        // Sort newest first
         const sortedOrders = enrichedOrders.sort((a, b) => {
           const ta = toJsDate(a.createdAt)?.getTime() ?? 0
           const tb = toJsDate(b.createdAt)?.getTime() ?? 0
@@ -128,7 +115,7 @@ const UserPastOrdersPage = () => {
         })
 
         setAllOrders(sortedOrders)
-        setOrders(sortedOrders.filter(o => (o.orderStatus || "").toLowerCase() === "delivered"))
+        setOrders(sortedOrders.filter((o) => (o.orderStatus || "").toLowerCase() === "delivered"))
       } catch (error) {
         console.error("Error fetching past orders:", error)
         setAllOrders([])
@@ -141,40 +128,27 @@ const UserPastOrdersPage = () => {
   }, [user])
 
 
-/* ---------------- FETCH USER REVIEWS ---------------- */
+  /* ---------------- FETCH USER REVIEWS ---------------- */
 
   useEffect(() => {
     const fetchUserReviews = async () => {
       if (!user?.uid) return
       try {
-        const q = query(
-          collection(fireDB, "reviews"),
-          where("userId", "==", user.uid)
-        )
-        const snap = await getDocs(q)
+        const { data: rows, error } = await supabase.from("reviews").select("*").eq("user_id", user.uid)
+        if (error) throw error
         const reviewsMap = {}
-        snap.docs.forEach(d => {
-          const data = d.data()
-          // Per-order key (new format): orderId_productId
-          if (data.orderId && data.productId) {
-            reviewsMap[`${data.orderId}_${data.productId}`] = {
-              id: d.id,
-              orderId: data.orderId,
-              productId: data.productId,
-              rating: data.rating,
-              comment: data.comment || ""
+          ; (rows || []).forEach((data) => {
+            // Per-order key: orderId_productId — each order has its own independent review
+            if (data.order_id && data.product_id) {
+              reviewsMap[`${data.order_id}_${data.product_id}`] = {
+                id: data.id,
+                orderId: data.order_id,
+                productId: data.product_id,
+                rating: data.rating,
+                comment: data.comment || ""
+              }
             }
-          }
-          // Legacy key (old format, no orderId): productId only — only store if not already overridden
-          if (data.productId && !reviewsMap[data.productId]) {
-            reviewsMap[data.productId] = {
-              id: d.id,
-              productId: data.productId,
-              rating: data.rating,
-              comment: data.comment || ""
-            }
-          }
-        })
+          })
         setUserReviews(reviewsMap)
       } catch (error) {
         console.error("Error fetching reviews:", error)
@@ -184,16 +158,13 @@ const UserPastOrdersPage = () => {
   }, [user])
 
 
-/* ---------------- OPEN REVIEW MODAL ---------------- */
+  /* ---------------- OPEN REVIEW MODAL ---------------- */
 
   const openReviewModal = (product, orderId) => {
     setSelectedProduct(product)
     setSelectedOrderId(orderId)
-    // Look up per-order review first, fall back to legacy product-only key if no orderId stored
-    const existing = userReviews && (
-      userReviews[`${orderId}_${product.productId}`] ||
-      (!userReviews[product.productId]?.orderId ? userReviews[product.productId] : null)
-    )
+    // Strict per-order lookup: each order has its own independent review
+    const existing = userReviews && userReviews[`${orderId}_${product.productId}`]
     if (existing) {
       setRating(existing.rating)
       setComment(existing.comment || "")
@@ -204,7 +175,7 @@ const UserPastOrdersPage = () => {
   }
 
 
-/* ---------------- SUBMIT REVIEW ---------------- */
+  /* ---------------- SUBMIT REVIEW ---------------- */
 
   const submitReview = async () => {
     if (!rating) {
@@ -263,9 +234,9 @@ const UserPastOrdersPage = () => {
   }, { scope: containerRef, dependencies: [orders, loading, isMobile] })
 
 
-/* ============================================================
-   DESKTOP TABS + HELPERS
-============================================================ */
+  /* ============================================================
+     DESKTOP TABS + HELPERS
+  ============================================================ */
   const TABS = [
     { key: "ALL", label: "All Past Orders" },
     { key: "DELIVERED", label: "Delivered" },
@@ -295,26 +266,26 @@ const UserPastOrdersPage = () => {
   }, [isMobile, mobileTotal, desktopTotal, pageSize, page])
 
   const handleBuyAgain = (o) => {
-    ;(o.products || []).forEach((p) =>
-      dispatch(addCart({ id: p.productId, title: p.title, price: p.price, image: p.thumbnail || p.image, thumbnail: p.thumbnail || p.image, category: p.category, stock: p.stock || 0 }))
-    )
+    ; (o.products || []).forEach((p) => {
+      const item = { id: p.productId, title: p.title, price: p.price, image: p.thumbnail || p.image, thumbnail: p.thumbnail || p.image, category: p.category, stock: p.stock || 0 }
+      const qty = nextAddQuantity(cartItems, item.id)
+      dispatch(addCart(item))
+      upsertCartItem(user?.uid, item, qty)
+    })
     toast.success("Items added to your cart")
     navigate("/cart")
   }
   const handleViewDetails = (o) => navigate(`/order/${o.id}`)
 
-  // Helper to look up per-order review from map
+  // Helper to look up per-order review from map — strict per-order, no cross-order fallback
   const getReview = (orderId, productId) => {
-    return userReviews && (
-      userReviews[`${orderId}_${productId}`] ||
-      (!userReviews[productId]?.orderId ? userReviews[productId] : null)
-    )
+    return userReviews && userReviews[`${orderId}_${productId}`]
   }
 
 
-/* ============================================================
-   MOBILE LAYOUT (≤1024px)
-============================================================ */
+  /* ============================================================
+     MOBILE LAYOUT (≤1024px)
+  ============================================================ */
   if (isMobile) {
     return (
       <div className="min-h-screen w-full" style={{ background: "var(--color-background)", fontFamily: "Inter, sans-serif", overflowX: "hidden", maxWidth: "100vw" }}>
@@ -440,9 +411,9 @@ const UserPastOrdersPage = () => {
   }
 
 
-/* ============================================================
-   DESKTOP LAYOUT (≥1024px)
-============================================================ */
+  /* ============================================================
+     DESKTOP LAYOUT (≥1024px)
+  ============================================================ */
   return (
     <div ref={containerRef} className="hidden lg:block" style={{ background: "var(--color-background)", minHeight: "100vh", fontFamily: "Inter, sans-serif", color: "var(--color-ink)" }}>
       <div style={{ maxWidth: "1280px", margin: "0 auto", padding: "48px 40px 80px" }}>

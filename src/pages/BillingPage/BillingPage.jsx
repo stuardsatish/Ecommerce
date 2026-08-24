@@ -1,8 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react"
-import {
-  collection, getDocs, query, orderBy, limit, where,
-} from "firebase/firestore"
-import { fireDB, auth } from "../../context/FirebaseConfig"
+import { supabase } from "../../context/SupabaseConfig"
+import { callFunction } from "../../utils/edgeFunctions"
 import { toast } from "react-toastify"
 import generateInvoice from "../../utils/generateInvoice"
 import useIsMobile from "../../hooks/useIsMobile"
@@ -34,21 +32,12 @@ const INTER   = "'Inter', sans-serif"
 const MANROPE = "'Manrope', sans-serif"
 const MONO    = "'JetBrains Mono', monospace"
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || ""
 const HELD_KEY = "billing_held_bills"
 
 /* ── helpers ────────────────────────────────────────────────────────────── */
 const money = (n) =>
   `₹${Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
-async function getAuthHeaders() {
-  const headers = { "Content-Type": "application/json" }
-  const user = auth.currentUser
-  if (user) {
-    try { headers.Authorization = `Bearer ${await user.getIdToken()}` } catch { /* */ }
-  }
-  return headers
-}
 
 /** discounted unit price from a catalog product doc (product/category, larger wins) */
 const unitPriceOf = (p) => {
@@ -115,8 +104,9 @@ const BillingPage = () => {
   /* ─────────────────────────── data loading ─────────────────────────── */
   const loadCatalog = useCallback(async () => {
     try {
-      const snap = await getDocs(collection(fireDB, "products"))
-      setProducts(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
+      const { data, error } = await supabase.from("products").select("*")
+      if (error) throw error
+      setProducts(data)
     } catch (e) {
       console.error("Failed to load products:", e)
       toast.error("Could not load product catalog")
@@ -125,11 +115,10 @@ const BillingPage = () => {
 
   const loadTopSellers = useCallback(async (catalog) => {
     try {
-      const q = query(collection(fireDB, "productStats"), orderBy("totalQuantity", "desc"), limit(8))
-      const snap = await getDocs(q)
+      const { data: stats } = await supabase.from("product_stats").select("product_id, total_quantity").order("total_quantity", { ascending: false }).limit(8)
       const byId = new Map(catalog.map((p) => [p.id, p]))
-      const list = snap.docs
-        .map((d) => byId.get(d.id))
+      const list = (stats || [])
+        .map((s) => byId.get(s.product_id))
         .filter(Boolean)
         .filter((p) => Number(p.stock || 0) > 0)
         .slice(0, 6)
@@ -141,17 +130,26 @@ const BillingPage = () => {
 
   const loadRecent = useCallback(async () => {
     try {
-      // orderBy createdAt (single-field index, always available), filter billing client-side.
-      const q = query(collection(fireDB, "orders"), orderBy("createdAt", "desc"), limit(60))
-      const snap = await getDocs(q)
-      const billing = snap.docs
-        .map((d) => ({ id: d.id, ...d.data() }))
-        .filter((o) => o.source === "billing")
+      const { data: rows } = await supabase
+        .from("orders")
+        .select("id, total, created_at, customer_name, order_status, payment_method, source")
+        .eq("source", "billing")
+        .order("created_at", { ascending: false })
+        .limit(60)
+      const billing = (rows || []).map((o) => ({
+        id: o.id,
+        total: Number(o.total || 0),
+        createdAt: o.created_at,
+        userName: o.customer_name || "",
+        orderStatus: o.order_status || "",
+        paymentMethod: o.payment_method || "",
+        source: o.source || "",
+      }))
       setRecentBills(billing.slice(0, 15))
       const todays = billing.filter((o) => isToday(toDateSafe(o.createdAt)))
       setToday({
         count: todays.length,
-        revenue: todays.reduce((s, o) => s + Number(o.total || 0), 0),
+        revenue: todays.reduce((s, o) => s + o.total, 0),
       })
     } catch (e) {
       console.warn("Recent bills unavailable:", e)
@@ -160,9 +158,13 @@ const BillingPage = () => {
 
   useEffect(() => {
     (async () => {
-      const snap = await getDocs(collection(fireDB, "products")).catch(() => null)
-      if (snap) {
-        const catalog = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+      let catalog = null
+      try {
+        const { data, error } = await supabase.from("products").select("*")
+        if (error) throw error
+        catalog = data
+      } catch { /* handled below */ }
+      if (catalog) {
         setProducts(catalog)
         loadTopSellers(catalog)
       }
@@ -309,13 +311,18 @@ const BillingPage = () => {
     if (!phone && !email) { toast.info("Enter a phone or email to search", { theme: "dark" }); return }
     setCustSearching(true)
     try {
-      let snap
-      if (phone) snap = await getDocs(query(collection(fireDB, "users"), where("phone", "==", phone), limit(1)))
-      if ((!snap || snap.empty) && email) snap = await getDocs(query(collection(fireDB, "users"), where("email", "==", email), limit(1)))
-      if (snap && !snap.empty) {
-        const d = snap.docs[0].data()
-        setCustomer({ name: d.name || "", phone: d.phone || phone, email: d.email || email })
-        toast.success(`Found: ${d.name || "customer"}`, { theme: "dark" })
+      let profile = null
+      if (phone) {
+        const { data } = await supabase.from("profiles").select("name, phone, email").eq("phone", phone).limit(1).single()
+        profile = data
+      }
+      if (!profile && email) {
+        const { data } = await supabase.from("profiles").select("name, phone, email").eq("email", email).limit(1).single()
+        profile = data
+      }
+      if (profile) {
+        setCustomer({ name: profile.name || "", phone: profile.phone || phone, email: profile.email || email })
+        toast.success(`Found: ${profile.name || "customer"}`, { theme: "dark" })
       } else {
         toast.info("No matching customer — will bill as walk-in", { theme: "dark" })
       }
@@ -326,18 +333,13 @@ const BillingPage = () => {
     }
   }
 
-  /* ─────────────────────────── promo apply ─────────────────────────── */
-  const applyPromo = async () => {
+  /* ─────────────────────────── promo apply ─────────────────────────── */const applyPromo = async () => {
     const code = promoInput.trim()
     if (!code) return
     if (subtotalR <= 0) { toast.info("Add items before applying a promo", { theme: "dark" }); return }
     setPromoLoading(true)
     try {
-      const headers = await getAuthHeaders()
-      const res = await fetch(`${API_BASE}/api/promo/validate`, {
-        method: "POST", headers, body: JSON.stringify({ code, subtotal: subtotalR }),
-      })
-      const data = await res.json().catch(() => ({}))
+      const { res, data } = await callFunction("promo-validate", { code, subtotal: subtotalR })
       if (res.ok && data.success) {
         setAppliedPromo({ code: data.code, discount: Number(data.discount || 0) })
         toast.success(`Promo ${data.code} applied — ${money(data.discount)} off`, { theme: "dark" })
@@ -410,23 +412,17 @@ const BillingPage = () => {
     setLoading(true)
     setResult(null)
     try {
-      const headers = await getAuthHeaders()
-      const res = await fetch(`${API_BASE}/api/orders/billing-create`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          items: billItems.map((it) => ({ productId: it.productId, quantity: it.quantity })),
-          customerName: customer.name.trim(),
-          customerPhone: customer.phone.trim(),
-          customerEmail: customer.email.trim(),
-          paymentMethod,
-          paymentStatus,
-          promoCode: appliedPromo?.code || "",
-          manualDiscount: Number(manualDiscount) || 0,
-          manualDiscountType,
-        }),
+      const { res, data } = await callFunction("orders-billing-create", {
+        items: billItems.map((it) => ({ productId: it.productId, quantity: it.quantity })),
+        customerName: customer.name.trim(),
+        customerPhone: customer.phone.trim(),
+        customerEmail: customer.email.trim(),
+        paymentMethod,
+        paymentStatus,
+        promoCode: appliedPromo?.code || "",
+        manualDiscount: Number(manualDiscount) || 0,
+        manualDiscountType,
       })
-      const data = await res.json().catch(() => ({}))
       if (res.ok && data.success) {
         setResult({ success: true, orderId: data.orderId, order: data.order })
         toast.success(`Bill ${data.orderId} created!`, { theme: "dark" })

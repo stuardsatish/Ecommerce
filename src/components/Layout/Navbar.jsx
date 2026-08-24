@@ -13,10 +13,7 @@ import {
   FaSun,
   FaHeart,
 } from "react-icons/fa";
-import { signOut } from "firebase/auth";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
-
-import { auth, fireDB } from "../../context/FirebaseConfig";
+import { supabase } from "../../context/SupabaseConfig";
 import { clearUser } from "../../context/UserSlice";
 import { useTheme } from "../../theme/ThemeContext";
 import { assets } from "../../assets/assets";
@@ -84,7 +81,9 @@ const Navbar = () => {
       ]
     : navItems;
 
-  const [userData, setUserData] = useState(null);
+  // The Redux user object already carries the full profile (fetched from
+  // Supabase profiles on login/bootstrap) - no separate fetch needed here.
+  const userData = user;
   const [menuOpen, setMenuOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [isHovering, setIsHovering] = useState(false);
@@ -121,25 +120,6 @@ const Navbar = () => {
     [cartItems]
   );
 
-  // Fetch user data from Firestore
-  useEffect(() => {
-    const fetchUser = async () => {
-      if (user?.uid) {
-        try {
-          const docRef = doc(fireDB, "users", user.uid);
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists()) {
-            setUserData(docSnap.data());
-          }
-        } catch (error) {
-          console.error("Fetch User Error:", error);
-        }
-      } else {
-        setUserData(null);
-      }
-    };
-    fetchUser();
-  }, [user]);
 
   // Click outside to close menus
   useEffect(() => {
@@ -201,19 +181,19 @@ const Navbar = () => {
 
   const handleLogout = useCallback(async () => {
     try {
-      // Clear the active session in Firestore first (while still authenticated),
-      // so a clean logout leaves no "phantom" session for the watcher to flag.
-      const current = auth.currentUser;
-      if (current) {
+      // Clear the active session in the profile first (while still
+      // authenticated), so a clean logout leaves no "phantom" session for
+      // the watcher to flag.
+      if (user?.uid) {
         try {
-          await updateDoc(doc(fireDB, "users", current.uid), { activeSessionId: null });
+          await supabase.from("profiles").update({ active_session_id: null }).eq("id", user.uid);
         } catch (e) {
           console.log("Could not clear active session:", e);
         }
       }
       clearLocalSession();
 
-      await signOut(auth);
+      await supabase.auth.signOut();
       dispatch(clearUser());
       clearSession();
       broadcastAuth("logout"); // sign out every other tab too
@@ -223,7 +203,8 @@ const Navbar = () => {
     } catch (error) {
       console.error("Logout Error:", error);
     }
-  }, [dispatch, navigate]);
+  }, [dispatch, navigate, user]);
+
 
   const handleDrawerNav = (path) => {
     navigate(path);

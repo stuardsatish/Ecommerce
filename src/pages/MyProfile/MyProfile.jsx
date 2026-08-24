@@ -1,14 +1,8 @@
 import React, { useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { doc, onSnapshot, setDoc } from "firebase/firestore"
-import {
-  updateProfile,
-  updatePassword,
-  EmailAuthProvider,
-  reauthenticateWithCredential,
-} from "firebase/auth"
-import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage"
-import { fireDB, auth, storage } from "../../context/FirebaseConfig"
+import { useDispatch } from "react-redux"
+import { supabase } from "../../context/SupabaseConfig"
+import { setUser } from "../../context/UserSlice"
 import { validateImageFile } from "../../utils/uploadValidation"
 import gsap from "gsap"
 import { useGSAP } from "@gsap/react"
@@ -47,6 +41,7 @@ const formatDate = (val) => {
 
 const MyProfile = () => {
   const navigate = useNavigate()
+  const dispatch = useDispatch()
   const isMobile = useIsMobile(640)
 
   const containerRef = useRef(null)
@@ -54,6 +49,7 @@ const MyProfile = () => {
   const fileInputRef = useRef(null)
 
   const [loading, setLoading] = useState(true)
+  const [authUser, setAuthUser] = useState(null)
   const [profile, setProfile] = useState({})
   const [uploading, setUploading] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -62,7 +58,6 @@ const MyProfile = () => {
   const [activeTab, setActiveTab] = useState("personal")
   const [saving, setSaving] = useState(false)
   const [modalError, setModalError] = useState("")
-  const [needsReauth, setNeedsReauth] = useState(false)
 
   const [form, setForm] = useState({
     name: "", phone: "", gender: "", dateOfBirth: "",
@@ -75,27 +70,32 @@ const MyProfile = () => {
 
   const [toast, setToast] = useState({ show: false, message: "" })
 
-  const currentUser = auth.currentUser
-
-  /* ── Live Firestore read (unsubscribe on unmount) ── */
+  /* ── Load the current Supabase auth user + profiles row ── */
   useEffect(() => {
-    const user = auth.currentUser
-    if (!user) {
-      navigate("/login")
-      return
-    }
-    const unsub = onSnapshot(
-      doc(fireDB, "users", user.uid),
-      (snap) => {
-        setProfile(snap.exists() ? snap.data() : {})
-        setLoading(false)
-      },
-      (err) => {
-        console.error("Profile read error:", err)
-        setLoading(false)
+    let active = true
+    const load = async () => {
+      const { data: { user: sUser } } = await supabase.auth.getUser()
+      if (!active) return
+      if (!sUser) {
+        navigate("/login")
+        return
       }
-    )
-    return () => unsub()
+      setAuthUser(sUser)
+      const { data: profileRow, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", sUser.id)
+        .single()
+      if (!active) return
+      if (error) console.error("Profile read error:", error)
+      setProfile(profileRow || {})
+      setLoading(false)
+    }
+    load().catch((err) => {
+      console.error("Profile load error:", err)
+      if (active) setLoading(false)
+    })
+    return () => { active = false }
   }, [navigate])
 
   /* ── Skeleton shimmer (GSAP opacity pulse, not CSS keyframes) ── */
@@ -131,19 +131,17 @@ const MyProfile = () => {
   const showToast = (message) => setToast({ show: true, message })
 
   /* ── Derived display values ── */
-  const displayName = profile.name || currentUser?.displayName || "User"
+  const displayName = profile.name || authUser?.user_metadata?.name || "User"
   const initials = getInitials(displayName)
-  const photoURL = profile.photoURL || currentUser?.photoURL || ""
-  const email = currentUser?.email || profile.email || ""
-  const emailVerified = !!currentUser?.emailVerified
-  const uid = currentUser?.uid || ""
-  const memberSince = formatDate(currentUser?.metadata?.creationTime || profile.createdAt)
+  const photoURL = profile.photo_url || authUser?.user_metadata?.avatar_url || ""
+  const email = authUser?.email || profile.email || ""
+  const emailVerified = !!authUser?.email_confirmed_at
+  const uid = authUser?.id || ""
+  const memberSince = formatDate(authUser?.created_at || profile.created_at)
   const addressObj =
     profile.address && typeof profile.address === "object"
       ? profile.address
-      : typeof profile.address === "string"
-        ? { street: profile.address }
-        : {}
+      : {}
   const addressDisplay = [addressObj.street, addressObj.city, addressObj.state, addressObj.pincode]
     .filter(Boolean)
     .join(", ")
@@ -153,18 +151,17 @@ const MyProfile = () => {
   const openModal = (tab = "personal") => {
     const a = profile.address && typeof profile.address === "object" ? profile.address : {}
     setForm({
-      name: profile.name || currentUser?.displayName || "",
+      name: profile.name || authUser?.user_metadata?.name || "",
       phone: profile.phone || "",
       gender: profile.gender || "",
-      dateOfBirth: profile.dateOfBirth || "",
-      addressStreet: a.street || (typeof profile.address === "string" ? profile.address : ""),
+      dateOfBirth: profile.date_of_birth || "",
+      addressStreet: a.street || "",
       addressCity: a.city || "",
       addressState: a.state || "",
       addressPincode: a.pincode || "",
     })
     setActiveTab(tab)
     setModalError("")
-    setNeedsReauth(false)
     setPwErrors({})
     setPwForm({ current: "", next: "", confirm: "" })
     setModalOpen(true)
@@ -175,8 +172,7 @@ const MyProfile = () => {
   }
 
   const handleSavePersonal = async () => {
-    const user = auth.currentUser
-    if (!user) return
+    if (!authUser) return
     try {
       setSaving(true)
       setModalError("")
@@ -184,7 +180,7 @@ const MyProfile = () => {
         name: form.name.trim(),
         phone: form.phone.trim(),
         gender: form.gender,
-        dateOfBirth: form.dateOfBirth,
+        date_of_birth: form.dateOfBirth || null,
         address: {
           street: form.addressStreet.trim(),
           city: form.addressCity.trim(),
@@ -192,11 +188,15 @@ const MyProfile = () => {
           pincode: form.addressPincode.trim(),
         },
       }
-      // Update Auth profile + Firestore document simultaneously
-      await Promise.all([
-        updateProfile(user, { displayName: updates.name }),
-        setDoc(doc(fireDB, "users", user.uid), updates, { merge: true }),
-      ])
+      const { data: updated, error } = await supabase
+        .from("profiles")
+        .update(updates)
+        .eq("id", authUser.id)
+        .select()
+        .single()
+      if (error) throw error
+      setProfile(updated)
+      dispatch(setUser({ ...updated, uid: authUser.id }))
       setModalOpen(false)
       showToast("Profile updated successfully")
     } catch (err) {
@@ -208,8 +208,7 @@ const MyProfile = () => {
   }
 
   const handleChangePassword = async () => {
-    const user = auth.currentUser
-    if (!user) return
+    if (!authUser) return
     const errs = {}
     if (!pwForm.current) errs.current = "Enter your current password"
     if (pwForm.next.length < 8) errs.next = "Minimum 8 characters"
@@ -220,26 +219,24 @@ const MyProfile = () => {
     try {
       setSaving(true)
       setModalError("")
-      setNeedsReauth(false)
-      const cred = EmailAuthProvider.credential(user.email, pwForm.current)
-      await reauthenticateWithCredential(user, cred)
-      await updatePassword(user, pwForm.next)
+      // Supabase has no dedicated reauthenticate call — verify the current
+      // password by signing in with it before applying the change.
+      const { error: verifyErr } = await supabase.auth.signInWithPassword({
+        email: authUser.email,
+        password: pwForm.current,
+      })
+      if (verifyErr) {
+        setPwErrors({ current: "Current password is incorrect" })
+        return
+      }
+      const { error: updateErr } = await supabase.auth.updateUser({ password: pwForm.next })
+      if (updateErr) throw updateErr
       setModalOpen(false)
       setPwForm({ current: "", next: "", confirm: "" })
       showToast("Password updated successfully")
     } catch (err) {
       console.error("Change password error:", err)
-      if (err.code === "auth/requires-recent-login") {
-        setModalError("Please sign in again before changing your password")
-        setNeedsReauth(true)
-      } else if (
-        err.code === "auth/wrong-password" ||
-        err.code === "auth/invalid-credential"
-      ) {
-        setPwErrors({ current: "Current password is incorrect" })
-      } else {
-        setModalError(err.message || "Failed to change password. Please try again.")
-      }
+      setModalError(err.message || "Failed to change password. Please try again.")
     } finally {
       setSaving(false)
     }
@@ -247,8 +244,7 @@ const MyProfile = () => {
 
   const handlePhotoUpload = async (e) => {
     const file = e.target.files?.[0]
-    const user = auth.currentUser
-    if (!file || !user) return
+    if (!file || !authUser) return
     const _imgCheck = validateImageFile(file, { maxBytes: 2 * 1024 * 1024, allowGif: false })
     if (!_imgCheck.ok) {
       showToast(_imgCheck.error)
@@ -257,13 +253,25 @@ const MyProfile = () => {
     }
     try {
       setUploading(true)
-      const sRef = storageRef(storage, `avatars/${user.uid}`)
-      await uploadBytes(sRef, file)
-      const url = await getDownloadURL(sRef)
-      await Promise.all([
-        updateProfile(user, { photoURL: url }),
-        setDoc(doc(fireDB, "users", user.uid), { photoURL: url }, { merge: true }),
-      ])
+      const ext = file.name.split(".").pop() || "jpg"
+      const path = `${authUser.id}/avatar.${ext}`
+      const { error: uploadErr } = await supabase.storage
+        .from("avatars")
+        .upload(path, file, { upsert: true })
+      if (uploadErr) throw uploadErr
+      const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(path)
+
+      const { data: updated, error } = await supabase
+        .from("profiles")
+        .update({ photo_url: publicUrl })
+        .eq("id", authUser.id)
+        .select()
+        .single()
+      if (error) throw error
+      await supabase.auth.updateUser({ data: { avatar_url: publicUrl } })
+
+      setProfile(updated)
+      dispatch(setUser({ ...updated, uid: authUser.id }))
       showToast("Profile photo updated")
     } catch (err) {
       console.error("Photo upload error:", err)
@@ -540,14 +548,6 @@ const MyProfile = () => {
                 {pwErrors[f.key] && <span style={{ fontSize: "12px", fontWeight: 500, color: C.red }}>{pwErrors[f.key]}</span>}
               </label>
             ))}
-            {needsReauth && (
-              <button
-                onClick={handleChangePassword}
-                style={{ alignSelf: "flex-start", fontSize: "13px", fontWeight: 700, color: C.primary }}
-              >
-                Re-authenticate
-              </button>
-            )}
           </div>
         )}
 
@@ -635,9 +635,9 @@ const MyProfile = () => {
                 {/* Personal Information */}
                 <section style={{ background: C.card, borderRadius: "12px", padding: "16px", boxShadow: "0px 4px 20px rgba(26,43,60,0.05)" }}>
                   {sectionHeading("Personal Information", true)}
-                  {mobileRow("Full Name", profile.name || currentUser?.displayName)}
+                  {mobileRow("Full Name", profile.name)}
                   {mobileRow("Gender", profile.gender)}
-                  {mobileRow("Date of Birth", formatDate(profile.dateOfBirth) || profile.dateOfBirth)}
+                  {mobileRow("Date of Birth", formatDate(profile.date_of_birth) || profile.date_of_birth)}
                   {mobileRow("Phone", profile.phone, true)}
                 </section>
 
@@ -739,9 +739,9 @@ const MyProfile = () => {
                   <button onClick={() => openModal("personal")} aria-label="Edit personal info"><Pencil size={16} color={C.primary} /></button>
                 </div>
                 <div className="flex flex-col" style={{ gap: "16px" }}>
-                  {desktopRow("Full Name", profile.name || currentUser?.displayName)}
+                  {desktopRow("Full Name", profile.name)}
                   {desktopRow("Gender", profile.gender)}
-                  {desktopRow("Date of Birth", formatDate(profile.dateOfBirth) || profile.dateOfBirth)}
+                  {desktopRow("Date of Birth", formatDate(profile.date_of_birth) || profile.date_of_birth)}
                   {desktopRow("Phone", profile.phone)}
                 </div>
               </div>

@@ -1,26 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 
-import {
-  doc,
-  getDoc,
-  getDocs,
-  collection,
-  query,
-  where,
-  updateDoc,
-  arrayUnion,
-  arrayRemove,
-} from "firebase/firestore";
-import { fireDB, storage } from "../../context/FirebaseConfig";
+import { supabase } from "../../context/SupabaseConfig";
+import { mapProductRow } from "../../utils/supabaseProducts";
 import { validateImageFile, validateImageFiles } from "../../utils/uploadValidation";
-
-import {
-  ref,
-  uploadBytes,
-  getDownloadURL,
-  deleteObject,
-} from "firebase/storage";
 
 const EditProductPage = () => {
   const { id } = useParams();
@@ -47,11 +30,15 @@ const EditProductPage = () => {
   const [uploadProgress, setUploadProgress] = useState(0); // Fetch product
 
   const getProduct = async () => {
-    const docRef = doc(fireDB, "products", id);
-    const docSnap = await getDoc(docRef);
+    const { data: row, error } = await supabase
+      .from("products")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+    if (error) throw error;
 
-    if (docSnap.exists()) {
-      const data = docSnap.data();
+    if (row) {
+      const data = mapProductRow(row);
       setProduct({
         ...data,
         thumbnail: data.thumbnail || data.image || "",
@@ -96,16 +83,20 @@ const EditProductPage = () => {
     if (!window.confirm("Remove this image?")) return;
     try {
       setLoading(true);
-      const productRef = doc(fireDB, "products", id); // 1. Remove from Firestore
-      await updateDoc(productRef, {
-        gallery: arrayRemove(imageUrl),
-      }); // 2. Try to delete from Storage if it matches our pattern (optional but recommended)
+      const newGallery = product.gallery.filter((img) => img !== imageUrl); // 1. Remove from the products row
+      const { error: galleryUpdateErr } = await supabase
+        .from("products")
+        .update({ gallery: newGallery })
+        .eq("id", id);
+      if (galleryUpdateErr) throw galleryUpdateErr; // 2. Try to delete from Storage if it matches our pattern (optional but recommended)
 
       try {
-        // Only attempt deletion if it's a firebase storage URL we recognize
-        if (imageUrl.includes("firebasestorage.googleapis.com")) {
-          const storageRef = ref(storage, imageUrl);
-          await deleteObject(storageRef);
+        // Only attempt deletion if it is a Supabase Storage object we recognize (products bucket)
+        const marker = "/storage/v1/object/public/products/";
+        const idx = imageUrl.indexOf(marker);
+        if (idx !== -1) {
+          const objectPath = imageUrl.slice(idx + marker.length);
+          await supabase.storage.from("products").remove([objectPath]);
         }
       } catch (e) {
         console.log("Storage delete skipped/failed:", e);
@@ -129,18 +120,17 @@ const EditProductPage = () => {
     try {
       setLoading(true);
       setUploadProgress(0);
-      const productRef = doc(fireDB, "products", id);
       const prodId = product.productId || id;
 
       let newThumbnail = product.thumbnail; // 1. Upload new Thumbnail if selected
 
       if (thumbFile) {
-        const thumbRef = ref(
-          storage,
-          `products/${prodId}/thumbnail/${thumbFile.name}`,
-        );
-        await uploadBytes(thumbRef, thumbFile);
-        newThumbnail = await getDownloadURL(thumbRef);
+        const thumbPath = `${prodId}/thumbnail/${thumbFile.name}`;
+        const { error: thumbErr } = await supabase.storage
+          .from("products")
+          .upload(thumbPath, thumbFile, { upsert: true });
+        if (thumbErr) throw thumbErr;
+        newThumbnail = supabase.storage.from("products").getPublicUrl(thumbPath).data.publicUrl;
         setUploadProgress(30);
       } // 2. Upload new Gallery images if selected
 
@@ -148,67 +138,39 @@ const EditProductPage = () => {
       if (galleryFiles.length > 0) {
         for (let i = 0; i < galleryFiles.length; i++) {
           const file = galleryFiles[i];
-          const fileRef = ref(
-            storage,
-            `products/${prodId}/gallery/${file.name}`,
-          );
-          await uploadBytes(fileRef, file);
-          const url = await getDownloadURL(fileRef);
+          const galleryPath = `${prodId}/gallery/${file.name}`;
+          const { error: galleryErr } = await supabase.storage
+            .from("products")
+            .upload(galleryPath, file, { upsert: true });
+          if (galleryErr) throw galleryErr;
+          const url = supabase.storage.from("products").getPublicUrl(galleryPath).data.publicUrl;
           newGalleryUrls.push(url);
           setUploadProgress(30 + ((i + 1) / galleryFiles.length) * 60);
         }
-      } // 3. Update Firestore
+      } // 3. Update the products row
 
-      await updateDoc(productRef, {
-        title: product.title,
-        price: Math.max(0, Number(product.price) || 0),
-        discount: Math.max(0, Number(product.discount) || 0),
-        discountExpiry: product.discountExpiry || "",
-        stock: Math.max(0, Number(product.stock) || 0),
-        category: product.category,
-        gstRate: Number(product.gstRate) || 0,
-        hsnCode: product.hsnCode || "",
-        priceType: "inclusive",
-        description: product.description || "",
-        thumbnail: newThumbnail,
-        gallery: arrayUnion(...newGalleryUrls),
-      });
+      const { error: updateErr } = await supabase
+        .from("products")
+        .update({
+          title: product.title,
+          price: Math.max(0, Number(product.price) || 0),
+          discount: Math.max(0, Number(product.discount) || 0),
+          discount_expiry: product.discountExpiry || null,
+          stock: Math.max(0, Number(product.stock) || 0),
+          category: product.category,
+          gst_rate: Number(product.gstRate) || 0,
+          hsn_code: product.hsnCode || "",
+          price_type: "inclusive",
+          description: product.description || "",
+          thumbnail: newThumbnail,
+          gallery: [...product.gallery, ...newGalleryUrls],
+        })
+        .eq("id", id);
+      if (updateErr) throw updateErr;
 
-      // Update the same product in every user's cart
-      const cartsSnapshot = await getDocs(collection(fireDB, "carts"));
-
-      for (const cartDoc of cartsSnapshot.docs) {
-        const cartData = cartDoc.data();
-
-        if (!cartData.items || !Array.isArray(cartData.items)) continue;
-
-        let changed = false;
-
-        const updatedItems = cartData.items.map((item) => {
-          if (item.productId === id) {
-            changed = true;
-
-            return {
-              ...item,
-              title: product.title,
-              price: Math.max(0, Number(product.price) || 0),
-              discount: Math.max(0, Number(product.discount) || 0),
-              discountExpiry: product.discountExpiry || "",
-              stock: Math.max(0, Number(product.stock) || 0),
-              category: product.category,
-              image: newThumbnail,
-            };
-          }
-
-          return item;
-        });
-
-        if (changed) {
-          await updateDoc(cartDoc.ref, {
-            items: updatedItems,
-          });
-        }
-      }
+      // Carts join products live at render/fetch time (see src/App.jsx), so
+      // there's no snapshot to patch here the way the old Firestore carts
+      // doc required.
 
       setLoading(false);
       alert("Product Updated Successfully");
@@ -284,7 +246,7 @@ const EditProductPage = () => {
         >
                     Edit Product        {" "}
         </h2>
-                {/* Thumbnail Preview & Change */}       {" "}
+                {/* Thumbnail Preview & Change */}       {" "}
         <div style={{ marginBottom: "20px" }}>
                      {" "}
           <label
@@ -319,7 +281,7 @@ const EditProductPage = () => {
           </div>
                  {" "}
         </div>
-                {/* Gallery Preview & Management */}       {" "}
+                {/* Gallery Preview & Management */}       {" "}
         <div style={{ marginBottom: "20px" }}>
                      {" "}
           <label
@@ -417,8 +379,8 @@ const EditProductPage = () => {
                        {" "}
           </div>
         )}
-                {/* Title */}       {" "}
-        <label style={{ fontWeight: "500" }}>Title</label>       {" "}
+                {/* Title */}       {" "}
+        <label style={{ fontWeight: "500" }}>Title</label>       {" "}
         <input
           type="text"
           name="title"
@@ -427,8 +389,8 @@ const EditProductPage = () => {
           placeholder="Product Title"
           style={inputStyle}
         />
-                {/* Price */}       {" "}
-        <label style={{ fontWeight: "500" }}>Price</label>       {" "}
+                {/* Price */}       {" "}
+        <label style={{ fontWeight: "500" }}>Price</label>       {" "}
         <input
           type="number"
           name="price"
@@ -456,8 +418,8 @@ const EditProductPage = () => {
           onChange={handleChange}
           style={inputStyle}
         />
-                {/* Stock */}       {" "}
-        <label style={{ fontWeight: "500" }}>Stock</label>       {" "}
+                {/* Stock */}       {" "}
+        <label style={{ fontWeight: "500" }}>Stock</label>       {" "}
         <input
           type="number"
           name="stock"
@@ -466,8 +428,8 @@ const EditProductPage = () => {
           placeholder="Available Stock"
           style={inputStyle}
         />
-                {/* Category */}       {" "}
-        <label style={{ fontWeight: "500" }}>Category</label>       {" "}
+                {/* Category */}       {" "}
+        <label style={{ fontWeight: "500" }}>Category</label>       {" "}
         <input
           type="text"
           name="category"
@@ -498,7 +460,7 @@ const EditProductPage = () => {
           placeholder="e.g. 0207"
           style={inputStyle}
         />
-        {/* Buttons */}       {" "}
+        {/* Buttons */}       {" "}
         <div
           style={{
             display: "flex",
@@ -520,7 +482,7 @@ const EditProductPage = () => {
               cursor: "pointer",
             }}
           >
-                        {loading ? "Updating..." : "Update Product"}       
+                        {loading ? "Updating..." : "Update Product"}       
              {" "}
           </button>
                    {" "}

@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { useSelector, useDispatch } from "react-redux"
-import { doc, getDoc } from "firebase/firestore"
-import { fireDB } from "../../context/FirebaseConfig"
+import { supabase } from "../../context/SupabaseConfig"
+import { mapOrderRow } from "../../utils/supabaseOrders"
+import { upsertCartItem, nextAddQuantity } from "../../utils/supabaseCart"
 import { addCart } from "../../context/CartSlice"
 import { generateInvoice } from "../../utils/generateInvoice"
 import { orderNo, statusMeta } from "../../features/orders/UserOrderCard"
@@ -37,6 +38,7 @@ const OrderDetailPage = () => {
   const navigate = useNavigate()
   const dispatch = useDispatch()
   const user = useSelector((state) => state.user.user)
+  const cartItems = useSelector((state) => state.cart.cartItems)
 
   const [order, setOrder] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -47,22 +49,23 @@ const OrderDetailPage = () => {
     ;(async () => {
       setLoading(true)
       try {
-        const snap = await getDoc(doc(fireDB, "orders", id))
-        if (!snap.exists()) { if (active) { setError(true) }; return }
-        const data = { id: snap.id, ...snap.data() }
-        // Enrich line items with fresh product thumbnails.
-        const products = await Promise.all((data.products || []).map(async (item) => {
-          if (!item.productId) return item
-          try {
-            const pSnap = await getDoc(doc(fireDB, "products", item.productId))
-            if (pSnap.exists()) {
-              const p = pSnap.data()
-              const img = p.thumbnail || p.image
-              return { ...item, thumbnail: img, image: img }
-            }
-          } catch { /* keep original */ }
-          return item
-        }))
+        const { data: row, error } = await supabase
+          .from("orders")
+          .select("*, order_items(*)")
+          .eq("id", id)
+          .single()
+        if (error || !row) { if (active) setError(true); return }
+        const data = mapOrderRow(row)
+        const productIds = [...new Set((data.products || []).map((item) => item.productId).filter(Boolean))]
+        let thumbById = {}
+        if (productIds.length) {
+          const { data: pRows } = await supabase.from("products").select("id, thumbnail, image").in("id", productIds)
+          ;(pRows || []).forEach((p) => { thumbById[p.id] = p.thumbnail || p.image })
+        }
+        const products = (data.products || []).map((item) => {
+          const img = thumbById[item.productId]
+          return img ? { ...item, thumbnail: img, image: img } : item
+        })
         if (active) setOrder({ ...data, products })
       } catch (e) {
         console.error("order detail fetch:", e)
@@ -75,9 +78,12 @@ const OrderDetailPage = () => {
   }, [id])
 
   const buyAgain = () => {
-    (order?.products || []).forEach((p) =>
-      dispatch(addCart({ id: p.productId, title: p.title, price: unitPrice(p), image: p.thumbnail || p.image, thumbnail: p.thumbnail || p.image, category: p.category, stock: p.stock || 0 }))
-    )
+    (order?.products || []).forEach((p) => {
+      const item = { id: p.productId, title: p.title, price: unitPrice(p), image: p.thumbnail || p.image, thumbnail: p.thumbnail || p.image, category: p.category, stock: p.stock || 0 }
+      const qty = nextAddQuantity(cartItems, item.id)
+      dispatch(addCart(item))
+      upsertCartItem(user?.uid, item, qty)
+    })
     toast.success("Items added to your cart")
     navigate("/cart")
   }

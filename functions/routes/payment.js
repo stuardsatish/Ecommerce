@@ -30,6 +30,23 @@ const Timestamp = admin.firestore.Timestamp;
 
 const CURRENCY = "INR";
 
+/**
+ * Product-level discount, ignoring it once discountExpiry has passed.
+ * Mirrors the frontend's isDiscountActive() (src/pages/CartPage/CartPage.jsx)
+ * and the same gate already applied in routes/orders.js — without this, an
+ * expired discount field still on the product doc gets applied server-side
+ * even though the cart page (correctly) stopped showing it, so the Razorpay
+ * amount ends up lower than the cart's displayed total.
+ */
+function activeProductDiscount(p) {
+  const raw = Number(p.discount || 0);
+  if (raw > 0 && p.discountExpiry) {
+    const expiryMs = new Date(p.discountExpiry).getTime();
+    if (!isNaN(expiryMs) && Date.now() > expiryMs) return 0;
+  }
+  return raw;
+}
+
 /** Lazily build the Razorpay client (env isn't present at deploy-analysis time). */
 let _razorpay = null;
 function getRazorpay() {
@@ -162,7 +179,7 @@ router.post("/create-order", async (req, res) => {
       // --------------------------------------------------
       // PRODUCT DISCOUNT  (percentage stored on product)
       // --------------------------------------------------
-      const productDiscount = Number(p.discount || 0);
+      const productDiscount = activeProductDiscount(p);
 
       // --------------------------------------------------
       // CATEGORY DISCOUNT  (stored as categoryDiscount
@@ -210,8 +227,8 @@ router.post("/create-order", async (req, res) => {
         if (!promoSnap.empty) {
           const pd = promoSnap.docs[0].data();
 
-          // Expiry check
-          const isExpired = isPromoExpired(pd.expiryDate);
+          // Expiry check
+          const isExpired = isPromoExpired(pd.expiryDate);
 
           if (!isExpired) {
             const value = Number(pd.value || 0);
@@ -432,7 +449,7 @@ router.post("/cod-create", async (req, res) => {
         return res.status(409).json({ success: false, error: `Not enough stock for ${p.title || pid}` });
       }
 
-      const productDiscount = Number(p.discount || 0);
+      const productDiscount = activeProductDiscount(p);
       const categoryDiscount = Number(p.categoryDiscount || 0);
       const finalDiscount = Math.max(productDiscount, categoryDiscount);
       const finalPrice = price - (price * finalDiscount) / 100;
