@@ -16,6 +16,19 @@ function allowedOrigins(): string[] {
   return env.split(",").map((s) => s.trim()).filter(Boolean);
 }
 
+function isOriginAllowed(origin: string): boolean {
+  if (!origin) return true;
+  const list = allowedOrigins();
+  if (list.includes("*") || list.includes(origin)) return true;
+  try {
+    const url = new URL(origin);
+    if (url.hostname.endsWith(".vercel.app") || url.hostname === "localhost" || url.hostname === "127.0.0.1") {
+      return true;
+    }
+  } catch (_) {}
+  return false;
+}
+
 /** Security headers ported from index.js's helmet() config. */
 const SECURITY_HEADERS: Record<string, string> = {
   "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
@@ -41,7 +54,7 @@ function corsHeaders(req: Request): Record<string, string> {
     Vary: "Origin",
   };
   if (!origin) return headers; // non-browser caller — nothing to restrict
-  if (allowedOrigins().includes(origin)) {
+  if (isOriginAllowed(origin)) {
     headers["Access-Control-Allow-Origin"] = origin;
   }
   return headers;
