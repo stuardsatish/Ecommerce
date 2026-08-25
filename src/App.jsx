@@ -121,7 +121,7 @@ const App = () => {
       const fetchCart = async () => {
         const { data, error } = await supabase
           .from("cart_items")
-          .select("quantity, product_id, variant_id, variant_name, price, title, image, category, products(title, price, discount, discount_expiry, stock, thumbnail, image, category)")
+          .select("quantity, product_id, variant_id, variant_name, price, title, image, category, products(title, price, discount, discount_expiry, stock, thumbnail, image, category, variants)")
           .eq("user_id", uid)
 
         if (error) {
@@ -134,6 +134,9 @@ const App = () => {
           const variantId = row.variant_id || ""
           // Compound id matches CartSlice expectations: productId_variantId for variants
           const compoundId = variantId ? `${row.product_id}_${variantId}` : row.product_id
+          const variantObj = (Array.isArray(p.variants) ? p.variants : []).find((v) => v.id === variantId)
+          const resolvedImage = variantObj?.image || row.image || p.thumbnail || p.image || ""
+
           return {
             id: compoundId,
             compound_id: compoundId,
@@ -144,8 +147,9 @@ const App = () => {
             // Use variant price from cart_items row (already stored correctly on add)
             price: variantId ? (Number(row.price) || 0) : (Number(p.price) || 0),
             quantity: row.quantity,
-            image: p.thumbnail || p.image || row.image || "",
-            stock: p.stock || 0,
+            image: resolvedImage,
+            thumbnail: resolvedImage,
+            stock: variantObj?.stock != null ? Number(variantObj.stock) : (p.stock || 0),
             category: p.category || row.category || "general",
             discount: Number(p.discount || 0),
             discountExpiry: p.discount_expiry || "",

@@ -43,62 +43,82 @@ Deno.serve(async (req) => {
     } = body || {};
 
     // ── 1. Validate inputs ────────────────────────────────────────────────
-    if (!Array.isArray(items) || items.length === 0) {
-      return jsonResponse(req, 400, { success: false, error: "No items in the bill." });
-    }
-    const safeMethod = VALID_PAYMENT_METHODS.includes(paymentMethod) ? paymentMethod : "Cash";
-    const safeStatus = paymentStatus === "pending" ? "pending" : "paid";
-    const safeDiscType = manualDiscountType === "percent" ? "percent" : "flat";
+    if (!Array.isArray(items) || items.length === 0) {
+      return jsonResponse(req, 400, { success: false, error: "No items in the bill." });
+    }
+    const safeMethod = VALID_PAYMENT_METHODS.includes(paymentMethod) ? paymentMethod : "Cash";
+    const safeStatus = paymentStatus === "pending" ? "pending" : "paid";
+    const safeDiscType = manualDiscountType === "percent" ? "percent" : "flat";
 
-    // ── 2. Server-authoritative pricing (catalog is source of truth) ──────
-    const pids = [...new Set(items.map((i: any) => String(i?.productId || "")).filter(Boolean))];
-    const { data: productRows, error: productErr } = await admin.from("products").select("*").in("id", pids);
-    if (productErr) throw productErr;
-    const productsById = new Map<string, ProductRow>((productRows || []).map((p: ProductRow) => [p.id, p]));
+    // ── 2. Server-authoritative pricing (catalog is source of truth) ──────
+    const pids = [...new Set(items.map((i: any) => {
+      const raw = String(i?.productId || i?.product_id || i?.id || "");
+      return raw.includes("_var_") ? raw.split("_var_")[0] : raw;
+    }).filter(Boolean))];
+    const { data: productRows, error: productErr } = await admin.from("products").select("*").in("id", pids);
+    if (productErr) throw productErr;
+    const productsById = new Map<string, ProductRow>((productRows || []).map((p: ProductRow) => [p.id, p]));
 
-    const resolvedItems: LineItem[] = [];
-    let subtotal = 0;
+    const resolvedItems: LineItem[] = [];
+    let subtotal = 0;
 
-    for (const it of items) {
-      const pid = String(it?.productId || "");
-      const qty = Math.floor(Number(it?.quantity) || 0);
-      if (!pid || qty <= 0) {
-        return jsonResponse(req, 400, { success: false, error: "Invalid bill item." });
-      }
-      const p = productsById.get(pid);
-      if (!p) {
-        return jsonResponse(req, 400, { success: false, error: `Product not found: ${pid}` });
-      }
-      const price = Number(p.price || 0);
-      if (price <= 0) {
-        return jsonResponse(req, 400, { success: false, error: `Product not purchasable: ${p.title || pid}` });
-      }
+    for (const it of items) {
+      const rawPid = String(it?.productId || it?.product_id || it?.id || "");
+      const pid = rawPid.includes("_var_") ? rawPid.split("_var_")[0] : rawPid;
+      const variantId = it?.variantId || it?.variant_id || (rawPid.includes("_var_") ? "var_" + rawPid.split("_var_")[1] : undefined);
+      const qty = Math.floor(Number(it?.quantity) || 0);
+      if (!pid || qty <= 0) {
+        return jsonResponse(req, 400, { success: false, error: "Invalid bill item." });
+      }
+      const p = productsById.get(pid);
+      if (!p) {
+        return jsonResponse(req, 400, { success: false, error: `Product not found: ${pid}` });
+      }
 
-      // No expiry check here — matches the original orders.js billing-create exactly.
-      const finalDiscount = Number(p.discount || 0);
-      const finalPrice = price - (price * finalDiscount) / 100;
+      let price = Number(p.price || 0);
+      let resolvedSku: string | undefined = p.sku ?? undefined;
+      let resolvedVariantName: string | undefined = undefined;
 
-      subtotal += finalPrice * qty;
+      if (variantId && Array.isArray(p.variants) && p.variants.length > 0) {
+        const variant = p.variants.find((v) => String(v.id) === String(variantId));
+        if (variant) {
+          price = Number(variant.price || 0);
+          resolvedVariantName = variant.name;
+          if (variant.sku) resolvedSku = variant.sku;
+        }
+      }
 
-      resolvedItems.push({
-        productId: pid,
-        title: p.title || "Product",
-        category: p.category || "general",
-        sku: p.sku || "",
-        quantity: qty,
-        originalPrice: price,
-        discount: finalDiscount,
-        finalPrice,
-        gstRate: Number(p.gst_rate || 0),
-        hsnCode: p.hsn_code || "",
-      });
-    }
+      if (price <= 0) {
+        return jsonResponse(req, 400, { success: false, error: `Product not purchasable: ${p.title || pid}` });
+      }
 
-    const subtotalRounded = Math.round(subtotal * 100) / 100;
+      // No expiry check here — matches the original orders.js billing-create exactly.
+      const finalDiscount = Number(p.discount || 0);
+      const finalPrice = price - (price * finalDiscount) / 100;
 
-    // ── 3. Promo code ───────────────────────────────────────────────────────
-    let promoDiscount = 0;
-    let appliedPromoCode = "";
+      subtotal += finalPrice * qty;
+
+      resolvedItems.push({
+        productId: pid,
+        variantId: variantId ? String(variantId) : undefined,
+        variantName: resolvedVariantName,
+        title: resolvedVariantName ? `${p.title || "Product"} [${resolvedVariantName}]` : (p.title || "Product"),
+        category: p.category || "general",
+        sku: resolvedSku || "",
+        quantity: qty,
+        originalPrice: price,
+        discount: finalDiscount,
+        finalPrice,
+        gstRate: Number(p.gst_rate || 0),
+        hsnCode: p.hsn_code || "",
+      });
+    }
+
+    const subtotalRounded = Math.round(subtotal * 100) / 100;
+
+    // ── 3. Promo code ───────────────────────────────────────────────────────
+    let promoDiscount = 0;
+    let appliedPromoCode = "";
     if (promoCode && typeof promoCode === "string" && promoCode.trim()) {
       const code = promoCode.trim().toUpperCase();
       try {

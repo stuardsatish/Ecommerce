@@ -32,6 +32,8 @@ export const upsertCartItem = async (uid, product, quantity) => {
   // product_id stored in the DB is always the actual products-table id
   const realProductId = product.productId || String(product.id || "").split("_")[0]
 
+  const variantImg = product.selected_variant?.image || product.selectedVariant?.image || product.image || product.thumbnail || ""
+
   const { error } = await supabase.from("cart_items").upsert(
     {
       user_id:          uid,
@@ -41,7 +43,7 @@ export const upsertCartItem = async (uid, product, quantity) => {
       selected_variant: product.selected_variant || product.selectedVariant || null,
       quantity,
       title:            product.title || "",
-      image:            product.thumbnail || product.image || "",
+      image:            variantImg,
       category:         product.category || "general",
       price:            Number(product.price) || 0,
       discount:         Number(product.discount || 0),

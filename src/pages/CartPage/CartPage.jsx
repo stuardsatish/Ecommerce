@@ -310,12 +310,17 @@ const CartPage = () => {
             promoCode is sent as a plain string; the server validates it against
             Firestore and applies the discount — the client never determines the value. */
       const rzpOrder = await createRazorpayOrder({
-        items: cartItems.map((i) => ({
-          productId: i.productId || i.id,
-          variantId: i.variant_id || null,
-          variant_name: i.variant_name || null,
-          quantity: i.quantity,
-        })),
+        items: cartItems.map((i) => {
+          const rawId = String(i.id || i.compound_id || "");
+          const cleanPid = i.productId || (rawId.includes("_var_") ? rawId.split("_var_")[0] : rawId);
+          const cleanVid = i.variant_id || (rawId.includes("_var_") ? "var_" + rawId.split("_var_")[1] : null);
+          return {
+            productId: cleanPid,
+            variantId: cleanVid,
+            variant_name: i.variant_name || null,
+            quantity: i.quantity,
+          };
+        }),
         promoCode: appliedPromo ? appliedPromo.code : "",
       });
 
@@ -438,11 +443,17 @@ const CartPage = () => {
       setIsProcessing(true);
 
       await createCodOrder({
-        items: cartItems.map((i) => ({
-          productId: i.productId || i.id,
-          variantId: i.variant_id || null,
-          quantity: i.quantity,
-        })),
+        items: cartItems.map((i) => {
+          const rawId = String(i.id || i.compound_id || "");
+          const cleanPid = i.productId || (rawId.includes("_var_") ? rawId.split("_var_")[0] : rawId);
+          const cleanVid = i.variant_id || (rawId.includes("_var_") ? "var_" + rawId.split("_var_")[1] : null);
+          return {
+            productId: cleanPid,
+            variantId: cleanVid,
+            variant_name: i.variant_name || null,
+            quantity: i.quantity,
+          };
+        }),
         promoCode: appliedPromo ? appliedPromo.code : "",
       });
 

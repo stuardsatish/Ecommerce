@@ -10,16 +10,18 @@ import { isPromoExpired } from "./auth.ts";
 export const round2 = (n: number): number => Math.round((Number(n) || 0) * 100) / 100;
 
 export type LineItem = {
-  productId: string;
-  title: string;
-  category: string;
-  sku?: string;
-  quantity: number;
-  originalPrice: number;
-  discount: number;
-  finalPrice: number;
-  gstRate: number;
-  hsnCode: string;
+  productId: string;
+  variantId?: string | null;
+  variantName?: string | null;
+  title: string;
+  category: string;
+  sku?: string;
+  quantity: number;
+  originalPrice: number;
+  discount: number;
+  finalPrice: number;
+  gstRate: number;
+  hsnCode: string;
 };
 
 export type GstLineItem = LineItem & {
@@ -146,14 +148,16 @@ export type PriceItemsResult =
  * rate and discount.
  */
 export function priceCartItems(
-  items: Array<{ productId?: string; variantId?: string | null; quantity?: number }>,
+  items: Array<{ productId?: string; product_id?: string; id?: string; variantId?: string | null; variant_id?: string | null; quantity?: number }>,
   productsById: Map<string, ProductRow>,
 ): PriceItemsResult {
   const lineItems: LineItem[] = [];
   let subtotal = 0;
 
   for (const it of items) {
-    const pid = String(it?.productId || "");
+    const rawPid = String(it?.productId || it?.product_id || it?.id || "");
+    const pid = rawPid.includes("_var_") ? rawPid.split("_var_")[0] : rawPid;
+    const variantId = it?.variantId || it?.variant_id || (rawPid.includes("_var_") ? "var_" + rawPid.split("_var_")[1] : undefined);
     const qty = Math.floor(Number(it?.quantity) || 0);
     if (!pid || qty <= 0) {
       return { ok: false, status: 400, error: "Invalid cart item" };
@@ -168,8 +172,8 @@ export function priceCartItems(
     let price = Number(p.price || 0);
     let stock = Number(p.stock || 0);
     let resolvedSku: string | undefined = p.sku ?? undefined;
+    let resolvedVariantName: string | undefined = undefined;
 
-    const variantId = it?.variantId;
     if (variantId && Array.isArray(p.variants) && p.variants.length > 0) {
       const variant = p.variants.find((v) => String(v.id) === String(variantId));
       if (!variant) {
@@ -177,6 +181,7 @@ export function priceCartItems(
       }
       price = Number(variant.price || 0);
       stock = Number(variant.stock || 0);
+      resolvedVariantName = variant.name;
       if (variant.sku) resolvedSku = variant.sku;
     }
 
@@ -184,7 +189,7 @@ export function priceCartItems(
       return { ok: false, status: 400, error: `Product not purchasable: ${p.title || pid}` };
     }
     if (stock < qty) {
-      return { ok: false, status: 409, error: `Not enough stock for ${p.title || pid}${variantId ? ` (variant ${variantId})` : ""}` };
+      return { ok: false, status: 409, error: `Not enough stock for ${p.title || pid}${variantId ? ` (variant ${resolvedVariantName || variantId})` : ""}` };
     }
 
     const finalDiscount = activeProductDiscount(p);
@@ -194,7 +199,9 @@ export function priceCartItems(
 
     lineItems.push({
       productId: pid,
-      title: p.title || "Product",
+      variantId: variantId ? String(variantId) : undefined,
+      variantName: resolvedVariantName,
+      title: resolvedVariantName ? `${p.title || "Product"} [${resolvedVariantName}]` : (p.title || "Product"),
       category: p.category || "general",
       sku: resolvedSku,
       quantity: qty,

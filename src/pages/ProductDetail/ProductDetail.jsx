@@ -390,8 +390,18 @@ const ProductDetail = () => {
 
     const handleAddToCartDesktop = () => {
         if (!user) { navigate("/login"); return }
+        const variantImg = activeVariant?.image || product.thumbnail || product.image
         const cartPayload = activeVariant
-            ? { ...product, variant_id: activeVariant.id, variant_name: activeVariant.name, selected_variant: activeVariant, price: activeVariant.price, stock: activeVariant.stock }
+            ? {
+                ...product,
+                variant_id: activeVariant.id,
+                variant_name: activeVariant.name,
+                selected_variant: activeVariant,
+                price: activeVariant.price,
+                stock: activeVariant.stock,
+                image: variantImg,
+                thumbnail: variantImg,
+            }
             : product
         const compoundId = activeVariant ? `${product.id}_${activeVariant.id}` : product.id
         const existingVariantItem = cartItems.find((item) => String(item.compound_id || item.id) === String(compoundId))
@@ -729,8 +739,18 @@ const ProductDetail = () => {
                                                 disabled={mobileCartItem.quantity >= (displayStock || 0)}
                                                 onClick={() => {
                                                     const qty = nextAddQuantity(cartItems, currentCartCompoundId)
+                                                    const variantImg = activeVariant?.image || product.thumbnail || product.image
                                                     const cartPayload = activeVariant
-                                                        ? { ...product, variant_id: activeVariant.id, variant_name: activeVariant.name, selected_variant: activeVariant, price: activeVariant.price, stock: activeVariant.stock }
+                                                        ? {
+                                                            ...product,
+                                                            variant_id: activeVariant.id,
+                                                            variant_name: activeVariant.name,
+                                                            selected_variant: activeVariant,
+                                                            price: activeVariant.price,
+                                                            stock: activeVariant.stock,
+                                                            image: variantImg,
+                                                            thumbnail: variantImg,
+                                                        }
                                                         : product
                                                     dispatch(addCart({ ...cartPayload, id: currentCartCompoundId, compound_id: currentCartCompoundId, qtyToAdd: 1 }))
                                                     upsertCartItem(user?.uid, cartPayload, qty, activeVariant?.id || null)
@@ -746,8 +766,18 @@ const ProductDetail = () => {
                                         <button
                                             onClick={() => {
                                                 if (!user) { navigate("/login"); return }
+                                                const variantImg = activeVariant?.image || product.thumbnail || product.image
                                                 const cartPayload = activeVariant
-                                                    ? { ...product, variant_id: activeVariant.id, variant_name: activeVariant.name, selected_variant: activeVariant, price: activeVariant.price, stock: activeVariant.stock }
+                                                    ? {
+                                                        ...product,
+                                                        variant_id: activeVariant.id,
+                                                        variant_name: activeVariant.name,
+                                                        selected_variant: activeVariant,
+                                                        price: activeVariant.price,
+                                                        stock: activeVariant.stock,
+                                                        image: variantImg,
+                                                        thumbnail: variantImg,
+                                                    }
                                                     : product
                                                 const qty = nextAddQuantity(cartItems, currentCartCompoundId)
                                                 dispatch(addCart({ ...cartPayload, id: currentCartCompoundId, compound_id: currentCartCompoundId, qtyToAdd: 1 }))
@@ -765,8 +795,18 @@ const ProductDetail = () => {
                                         if (!user) { navigate("/login"); return }
                                         const currentCartCompoundId = activeVariant ? `${product?.id || id}_${activeVariant.id}` : (product?.id || id)
                                         const mobileCartItem = cartItems.find((item) => String(item.compound_id || item.id) === String(currentCartCompoundId))
+                                        const variantImg = activeVariant?.image || product.thumbnail || product.image
                                         const cartPayload = activeVariant
-                                            ? { ...product, variant_id: activeVariant.id, variant_name: activeVariant.name, selected_variant: activeVariant, price: activeVariant.price, stock: activeVariant.stock }
+                                            ? {
+                                                ...product,
+                                                variant_id: activeVariant.id,
+                                                variant_name: activeVariant.name,
+                                                selected_variant: activeVariant,
+                                                price: activeVariant.price,
+                                                stock: activeVariant.stock,
+                                                image: variantImg,
+                                                thumbnail: variantImg,
+                                            }
                                             : product
                                         if (!mobileCartItem) {
                                             const qty = nextAddQuantity(cartItems, currentCartCompoundId)

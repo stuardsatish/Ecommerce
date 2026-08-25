@@ -65,7 +65,10 @@ Deno.serve(async (req) => {
     }
 
     // ---- SERVER-SIDE PRICING (single source of truth) ----
-    const pids = [...new Set(items.map((i: any) => String(i?.productId || "")).filter(Boolean))];
+    const pids = [...new Set(items.map((i: any) => {
+      const raw = String(i?.productId || i?.product_id || i?.id || "");
+      return raw.includes("_var_") ? raw.split("_var_")[0] : raw;
+    }).filter(Boolean))];
     const { data: productRows, error: productErr } = await admin.from("products").select("*").in("id", pids);
     if (productErr) throw productErr;
     const productsById = new Map<string, ProductRow>((productRows || []).map((p: ProductRow) => [p.id, p]));

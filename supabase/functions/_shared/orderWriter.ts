@@ -33,17 +33,19 @@ export class StockError extends Error {
 
 /** Maps GST-enriched line items into create_order_tx's p_items jsonb shape. */
 function toOrderItemsJson(items: GstLineItem[]) {
-  return items.map((it) => ({
-    product_id: it.productId,
-    title: it.title,
-    quantity: it.quantity,
-    unit_price: it.finalPrice,
-    discount: it.discount,
-    cgst: it.cgstAmount,
-    sgst: it.sgstAmount,
-    igst: it.igstAmount,
-    line_total: round2(it.finalPrice * it.quantity),
-  }));
+  return items.map((it) => ({
+    product_id: it.productId,
+    variant_id: it.variantId || null,
+    variant_name: it.variantName || null,
+    title: it.title,
+    quantity: it.quantity,
+    unit_price: it.finalPrice,
+    discount: it.discount,
+    cgst: it.cgstAmount,
+    sgst: it.sgstAmount,
+    igst: it.igstAmount,
+    line_total: round2(it.finalPrice * it.quantity),
+  }));
 }
 
 /**
