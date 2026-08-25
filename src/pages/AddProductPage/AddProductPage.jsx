@@ -512,23 +512,43 @@ const AddProductPage = () => {
                                 )}
                             </div>
 
-                            {/* Price — hidden for variant products; each variant carries its own price */}
-                            {productType === "single" && (
-                                <div>
-                                    <label className={labelCls}>Price (₹)</label>
-                                    <div className="relative">
-                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[15px]" style={{ color: C.textS }}>₹</span>
+                            {/* Price — editable for single, auto-calculated for variant */}
+                            <div>
+                                <label className={labelCls}>
+                                    Price (₹)
+                                    {productType === "variant" && (
+                                        <span className="ml-2 text-[11px] font-normal" style={{ color: C.textS }}>auto — lowest variant price</span>
+                                    )}
+                                </label>
+                                <div className="relative">
+                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[15px]" style={{ color: C.textS }}>₹</span>
+                                    {productType === "single" ? (
                                         <input name="price" type="number" value={form.price} onChange={onField} placeholder="0.00" className={`${inputCls} pl-7`} />
-                                    </div>
+                                    ) : (
+                                        <input type="text" readOnly
+                                            value={variantRows.length > 0 ? Math.min(...variantRows.map(v => Number(v.price) || 0)).toFixed(2) : "Set in combinations below"}
+                                            className={`${inputCls} pl-7`}
+                                            style={{ opacity: 0.6, cursor: "not-allowed", background: "var(--color-surface-muted)" }} />
+                                    )}
                                 </div>
-                            )}
-                            {/* Stock — hidden for variant products; each variant carries its own stock */}
-                            {productType === "single" && (
-                                <div>
-                                    <label className={labelCls}>Stock Quantity</label>
+                            </div>
+                            {/* Stock — editable for single, auto-calculated for variant */}
+                            <div>
+                                <label className={labelCls}>
+                                    Stock Quantity
+                                    {productType === "variant" && (
+                                        <span className="ml-2 text-[11px] font-normal" style={{ color: C.textS }}>auto — sum of all variants</span>
+                                    )}
+                                </label>
+                                {productType === "single" ? (
                                     <input name="stock" type="number" value={form.stock} onChange={onField} placeholder="0" className={inputCls} />
-                                </div>
-                            )}
+                                ) : (
+                                    <input type="text" readOnly
+                                        value={variantRows.length > 0 ? variantRows.reduce((s,v) => s + (Number(v.stock)||0), 0) : "Set in combinations below"}
+                                        className={inputCls}
+                                        style={{ opacity: 0.6, cursor: "not-allowed", background: "var(--color-surface-muted)" }} />
+                                )}
+                            </div>
 
                             <div>
                                 <label className={labelCls}>Brand</label>
@@ -575,30 +595,36 @@ const AddProductPage = () => {
                                 </label>
                             </div>
                             <div>
-                                <div className="flex items-center justify-between mb-1.5">
-                                    <label className="text-[13px] font-semibold">Gallery Preview</label>
+                                <div className="flex items-center justify-between mb-2">
+                                    <label className="text-[13px] font-semibold">Gallery Images</label>
                                     {loading && uploadProgress > 0 && uploadProgress < 100 && (
                                         <span className="text-[12px] font-bold" style={{ color: C.indigo }}>Uploading {uploadProgress}%</span>
                                     )}
                                 </div>
-                                <div className="flex gap-2 flex-wrap">
-                                    {[0, 1, 2, 3].map((i) => {
-                                        const imgs = [thumbPreview, ...galleryPreviews].filter(Boolean)
-                                        const img = imgs[i]
-                                        return (
-                                            <div key={i} className="flex items-center justify-center overflow-hidden flex-shrink-0 w-[72px] h-[72px] sm:w-[92px] sm:h-[92px]"
-                                                style={{ borderRadius: "8px", background: C.chip, border: img ? (i === 0 ? `2px solid ${C.indigo}` : `1px solid ${C.border}`) : `1px dashed var(--color-border-strong)` }}>
-                                                {img ? <img src={img} alt="" className="w-full h-full object-cover" /> : <Plus size={20} style={{ color: "var(--color-muted)" }} />}
+
+                                {/* Add Gallery button — always first */}
+                                <label className="inline-flex items-center gap-2 cursor-pointer px-4 py-2 rounded-lg text-[13px] font-bold mb-3"
+                                    style={{ background: C.chip, border: `1px dashed ${C.border}`, color: C.textS }}>
+                                    <UploadCloud size={16} />
+                                    {galleryPreviews.length > 0 ? `Replace gallery (${galleryPreviews.length} selected)` : "Add gallery images"}
+                                    <input type="file" accept="image/*" multiple className="hidden" onChange={onGallery} />
+                                </label>
+
+                                {/* Preview strip — all images, horizontal scroll */}
+                                {galleryPreviews.length > 0 && (
+                                    <div className="flex gap-2 overflow-x-auto pb-2" style={{ scrollbarWidth: "thin" }}>
+                                        {galleryPreviews.map((src, i) => (
+                                            <div key={i} className="flex-shrink-0 overflow-hidden relative"
+                                                style={{ width: 72, height: 72, borderRadius: 8, border: `1px solid ${C.border}`, background: C.chip }}>
+                                                <img src={src} alt="" className="w-full h-full object-cover" />
+                                                <span className="absolute bottom-0.5 right-1 text-[10px] font-bold" style={{ color: "#fff", textShadow: "0 1px 2px #000" }}>{i + 1}</span>
                                             </div>
-                                        )
-                                    })}
-                                    <label className="flex items-center justify-center cursor-pointer flex-shrink-0 w-[72px] h-[72px] sm:w-[92px] sm:h-[92px]"
-                                        style={{ borderRadius: "8px", border: `1px dashed ${C.border}`, color: C.textS }}>
-                                        <span className="text-[11px] text-center px-1">Add gallery</span>
-                                        <input type="file" accept="image/*" multiple className="hidden" onChange={onGallery} />
-                                    </label>
-                                </div>
-                                <div className="mt-3 rounded-full overflow-hidden" style={{ height: "8px", background: C.chip }}>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* Upload progress bar */}
+                                <div className="mt-2 rounded-full overflow-hidden" style={{ height: "6px", background: C.chip }}>
                                     <div ref={progressRef} style={{ height: "100%", width: `${uploadProgress}%`, background: C.indigo, borderRadius: "9999px", transition: "width 0.3s" }} />
                                 </div>
                             </div>

@@ -315,7 +315,10 @@ const ProductDetail = () => {
 
     const mainImage = product?.thumbnail || product?.image
     const galleryImages = product?.images || product?.productImages || product?.gallery || []
+    // Keep the main product gallery unchanged — variant images show only inside their chips.
     const allImages = [mainImage, ...galleryImages].filter(Boolean)
+    // Variant display image: when a variant with its own image is selected, swap main preview.
+    const variantDisplayImage = selectedVariant?.image || null
 
     // When a variant is selected, use its price/stock instead of the product-level fields.
     const activeVariant = selectedVariant
@@ -332,7 +335,7 @@ const ProductDetail = () => {
             : stockNum <= 10
                 ? `Only ${stockNum} left in stock - order soon`
                 : null
-    const activeImage = allImages[activeImgIdx] || allImages[0]
+    const activeImage = variantDisplayImage || allImages[activeImgIdx] || allImages[0]
     const specRows = normalizeSpecs(product?.specs)
 
     /* ============================================================
@@ -348,7 +351,7 @@ const ProductDetail = () => {
         return Number(product?.discount || 0);
     })()
     const priceNum = mrpNum - (mrpNum * discountPct) / 100
-    const desktopMainImage = allImages[selectedImageIndex] || mainImage
+    const desktopMainImage = variantDisplayImage || allImages[selectedImageIndex] || mainImage
     const features = Array.isArray(product?.features) ? product.features : []
     const specRowsDetailed = normalizeSpecs(product?.specifications || product?.specs)
 
@@ -544,7 +547,14 @@ const ProductDetail = () => {
                                                                 textDecoration: outOfStock ? "line-through" : "none", cursor: outOfStock ? "not-allowed" : "pointer",
                                                             }}
                                                         >
-                                                            {v.name} · ₹{v.price}
+                                                            <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                                                {(v.image || mainImage) && (
+                                                                    <img src={v.image || mainImage} alt={v.name}
+                                                                        style={{ width: 44, height: 44, borderRadius: 6, objectFit: "cover", flexShrink: 0,
+                                                                            border: isSelected ? "1px solid rgba(255,255,255,0.5)" : "1px solid var(--color-border)" }} />
+                                                                )}
+                                                                {v.name} · ₹{v.price}
+                                                            </span>
                                                         </button>
                                                     )
                                                 })}
@@ -898,7 +908,14 @@ const ProductDetail = () => {
                                                                 transition: "all 0.15s",
                                                             }}
                                                         >
-                                                            {v.name} &nbsp;·&nbsp; ₹{v.price}
+                                                            <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                                                {(v.image || mainImage) && (
+                                                                    <img src={v.image || mainImage} alt={v.name}
+                                                                        style={{ width: 44, height: 44, borderRadius: 6, objectFit: "cover", flexShrink: 0,
+                                                                            border: isSelected ? "1px solid rgba(255,255,255,0.5)" : "1px solid var(--color-border)" }} />
+                                                                )}
+                                                                {v.name} &nbsp;·&nbsp; ₹{v.price}
+                                                            </span>
                                                         </button>
                                                     )
                                                 })}
