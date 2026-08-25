@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react"
 
 import { supabase } from "../../context/SupabaseConfig"
-import { mapOrderRows } from "../../utils/supabaseOrders"
+import { mapOrderRows, resolveOrderItemImage } from "../../utils/supabaseOrders"
 import { upsertCartItem, nextAddQuantity } from "../../utils/supabaseCart"
 import { useSelector, useDispatch } from "react-redux"
 import { useNavigate } from "react-router-dom"
@@ -84,15 +84,16 @@ const UserOrdersPage = () => {
         const rawOrders = mapOrderRows(rows)
 
         const productIds = [...new Set(rawOrders.flatMap((o) => (o.products || []).map((p) => p.productId)).filter(Boolean))]
-        let thumbById = {}
+        let productById = {}
         if (productIds.length) {
-          const { data: pRows } = await supabase.from("products").select("id, thumbnail, image").in("id", productIds)
-            ; (pRows || []).forEach((p) => { thumbById[p.id] = p.thumbnail || p.image })
+          const { data: pRows } = await supabase.from("products").select("id, thumbnail, image, variants").in("id", productIds)
+          ;(pRows || []).forEach((p) => { productById[p.id] = p })
         }
         const enrichedOrders = rawOrders.map((order) => ({
           ...order,
           products: (order.products || []).map((item) => {
-            const img = thumbById[item.productId]
+            const p = productById[item.productId]
+            const img = resolveOrderItemImage(item, p)
             return img ? { ...item, thumbnail: img, image: img } : item
           }),
         }))

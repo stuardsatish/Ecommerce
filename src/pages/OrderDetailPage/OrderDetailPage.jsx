@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { useSelector, useDispatch } from "react-redux"
 import { supabase } from "../../context/SupabaseConfig"
-import { mapOrderRow } from "../../utils/supabaseOrders"
+import { mapOrderRow, resolveOrderItemImage } from "../../utils/supabaseOrders"
 import { upsertCartItem, nextAddQuantity } from "../../utils/supabaseCart"
 import { addCart } from "../../context/CartSlice"
 import { generateInvoice } from "../../utils/generateInvoice"
@@ -56,17 +56,18 @@ const OrderDetailPage = () => {
           .single()
         if (error || !row) { if (active) setError(true); return }
         const data = mapOrderRow(row)
-        const productIds = [...new Set((data.products || []).map((item) => item.productId).filter(Boolean))]
-        let thumbById = {}
-        if (productIds.length) {
-          const { data: pRows } = await supabase.from("products").select("id, thumbnail, image").in("id", productIds)
-          ;(pRows || []).forEach((p) => { thumbById[p.id] = p.thumbnail || p.image })
-        }
-        const products = (data.products || []).map((item) => {
-          const img = thumbById[item.productId]
-          return img ? { ...item, thumbnail: img, image: img } : item
-        })
-        if (active) setOrder({ ...data, products })
+        const productIds = [...new Set((data.products || []).map((item) => item.productId).filter(Boolean))]
+        let productById = {}
+        if (productIds.length) {
+          const { data: pRows } = await supabase.from("products").select("id, thumbnail, image, variants").in("id", productIds)
+          ;(pRows || []).forEach((p) => { productById[p.id] = p })
+        }
+        const products = (data.products || []).map((item) => {
+          const p = productById[item.productId]
+          const img = resolveOrderItemImage(item, p)
+          return img ? { ...item, thumbnail: img, image: img } : item
+        })
+        if (active) setOrder({ ...data, products })
       } catch (e) {
         console.error("order detail fetch:", e)
         if (active) setError(true)

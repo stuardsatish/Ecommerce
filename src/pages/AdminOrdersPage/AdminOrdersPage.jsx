@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom"
 import { toast } from "react-toastify"
 
 import { supabase } from "../../context/SupabaseConfig"
-import { mapOrderRows } from "../../utils/supabaseOrders"
+import { mapOrderRows, resolveOrderItemImage } from "../../utils/supabaseOrders"
 import { generateInvoice } from "../../utils/generateInvoice"
 import { paymentMethodLabel, paymentStatusLabel, isCodPending, isPendingPayment } from "../../utils/paymentLabels"
 import SearchBar from "../../components/SearchBar"
@@ -128,31 +128,48 @@ const AdminOrdersPage = () => {
       { replace: true }
     )
   }
-  const handleSearchChange = (v) => {
-    setSearchTerm(v)
-    updateParams({ search: v })
-  }
-  // The active tab's PaginatedOrderTable reports its page up for URL reflection.
-  const handleActivePage = (p) => updateParams({ page: p })
+  const handleSearchChange = (v) => {
+    setSearchTerm(v)
+    updateParams({ search: v })
+  }
+  // The active tab's PaginatedOrderTable reports its page up for URL reflection.
+  const handleActivePage = (p) => updateParams({ page: p })
 
-  /* ---------------- REALTIME ORDERS LISTENER ---------------- */
-  useEffect(() => {
-    const fetchOrders = async () => {
-      const { data, error } = await supabase
-        .from("orders")
-        .select("*, order_items(*)")
-        .order("created_at", { ascending: false })
-      if (error) { console.error("orders fetch:", error); return }
-      setOrders(mapOrderRows(data))
-      setLoading(false)
-    }
-    fetchOrders()
-    const channel = supabase
-      .channel("admin-orders-realtime")
-      .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, fetchOrders)
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
-  }, [])
+  /* ---------------- REALTIME ORDERS LISTENER ---------------- */
+  useEffect(() => {
+    const fetchOrders = async () => {
+      const { data, error } = await supabase
+        .from("orders")
+        .select("*, order_items(*)")
+        .order("created_at", { ascending: false })
+      if (error) { console.error("orders fetch:", error); return }
+      const rawOrders = mapOrderRows(data)
+
+      const productIds = [...new Set(rawOrders.flatMap((o) => (o.products || []).map((p) => p.productId)).filter(Boolean))]
+      let productById = {}
+      if (productIds.length) {
+        const { data: pRows } = await supabase.from("products").select("id, thumbnail, image, variants").in("id", productIds)
+        ;(pRows || []).forEach((p) => { productById[p.id] = p })
+      }
+      const enrichedOrders = rawOrders.map((order) => ({
+        ...order,
+        products: (order.products || []).map((item) => {
+          const pd = productById[item.productId]
+          const img = resolveOrderItemImage(item, pd)
+          return { ...item, thumbnail: img, image: img }
+        }),
+      }))
+
+      setOrders(enrichedOrders)
+      setLoading(false)
+    }
+    fetchOrders()
+    const channel = supabase
+      .channel("admin-orders-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, fetchOrders)
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [])
 
   /* ---------------- TAB BUCKETING ---------------- */
   // Search is applied per-tab inside <PaginatedOrderTable>, so this returns the
@@ -559,38 +576,38 @@ const AdminOrdersPage = () => {
             </div>
           </div>
 
-          {/* Ordered Products */}
-          <div style={{ paddingTop: "32px" }}>
-            <div className="flex items-center justify-between" style={{ marginBottom: "16px" }}>
-              <h3 style={{ fontFamily: INTER, fontWeight: 700, fontSize: "18px", color: "var(--color-ink)" }}>Ordered Products</h3>
-              <span style={{ background: "var(--color-accent-subtle)", fontFamily: INTER, fontWeight: 700, fontSize: "12px", color: "var(--color-ink)", padding: "4px 12px", borderRadius: "9999px" }}>{productsCount} ITEMS</span>
-            </div>
-            <div className="flex flex-col gap-3">
-              {(o.products || []).map((p, i) => (
-                <div key={i} className="flex items-center gap-5" style={{ background: "color-mix(in srgb, var(--color-surface) 50%, transparent)", border: "1px solid var(--color-border)", borderRadius: "24px", padding: "20px" }}>
-                  <span className="flex items-center justify-center flex-shrink-0 overflow-hidden" style={{ width: "64px", height: "64px", background: "color-mix(in srgb, var(--color-accent) 20%, transparent)", borderRadius: "12px" }}>
-                    {(productImages[p.productId] || p.image) ? <img src={productImages[p.productId] || p.image} alt={p.title} className="w-full h-full object-cover" /> : <Package size={22} style={{ color: "var(--color-primary)" }} />}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <p style={{ fontFamily: INTER, fontWeight: 700, fontSize: "16px", color: "var(--color-ink)" }} className="truncate">{p.title}</p>
-                    <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-                      <p style={{ fontFamily: INTER, fontWeight: 500, fontSize: "12px", color: "var(--color-body)" }}>Qty: {p.quantity} •</p>
-                      <p style={{ fontFamily: INTER, fontWeight: 700, fontSize: "12px", color: "var(--color-primary)" }}>{formatINR(resolvedFinalPrice(p))} each</p>
-                      {Number(p.discount) > 0 && (
-                        <p style={{ fontFamily: INTER, fontWeight: 400, fontSize: "11px", color: "var(--color-muted)", textDecoration: "line-through" }}>{formatINR(p.originalPrice ?? p.price ?? 0)}</p>
-                      )}
-                    </div>
-                  </div>
-                  <div style={{ textAlign: "right" }}>
-                    <p style={{ fontFamily: INTER, fontWeight: 800, fontSize: "18px", color: "var(--color-ink)" }}>{formatINR(resolvedFinalPrice(p) * p.quantity)}</p>
-                    {Number(p.discount) > 0 && (
-                      <p style={{ fontFamily: INTER, fontWeight: 400, fontSize: "11px", color: "var(--color-muted)" }}>{Math.round(Number(p.discount))}% OFF</p>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+          {/* Ordered Products */}
+          <div style={{ paddingTop: "32px" }}>
+            <div className="flex items-center justify-between" style={{ marginBottom: "16px" }}>
+              <h3 style={{ fontFamily: INTER, fontWeight: 700, fontSize: "18px", color: "var(--color-ink)" }}>Ordered Products</h3>
+              <span style={{ background: "var(--color-accent-subtle)", fontFamily: INTER, fontWeight: 700, fontSize: "12px", color: "var(--color-ink)", padding: "4px 12px", borderRadius: "9999px" }}>{productsCount} ITEMS</span>
+            </div>
+            <div className="flex flex-col gap-3">
+              {(o.products || []).map((p, i) => (
+                <div key={i} className="flex items-center gap-5" style={{ background: "color-mix(in srgb, var(--color-surface) 50%, transparent)", border: "1px solid var(--color-border)", borderRadius: "24px", padding: "20px" }}>
+                  <span className="flex items-center justify-center flex-shrink-0 overflow-hidden" style={{ width: "64px", height: "64px", background: "color-mix(in srgb, var(--color-accent) 20%, transparent)", borderRadius: "12px" }}>
+                    {(p.thumbnail || p.image || productImages[p.productId]) ? <img src={p.thumbnail || p.image || productImages[p.productId]} alt={p.title} className="w-full h-full object-cover" /> : <Package size={22} style={{ color: "var(--color-primary)" }} />}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p style={{ fontFamily: INTER, fontWeight: 700, fontSize: "16px", color: "var(--color-ink)" }} className="truncate">{p.title}</p>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                      <p style={{ fontFamily: INTER, fontWeight: 500, fontSize: "12px", color: "var(--color-body)" }}>Qty: {p.quantity} •</p>
+                      <p style={{ fontFamily: INTER, fontWeight: 700, fontSize: "12px", color: "var(--color-primary)" }}>{formatINR(resolvedFinalPrice(p))} each</p>
+                      {Number(p.discount) > 0 && (
+                        <p style={{ fontFamily: INTER, fontWeight: 400, fontSize: "11px", color: "var(--color-muted)", textDecoration: "line-through" }}>{formatINR(p.originalPrice ?? p.price ?? 0)}</p>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <p style={{ fontFamily: INTER, fontWeight: 800, fontSize: "18px", color: "var(--color-ink)" }}>{formatINR(resolvedFinalPrice(p) * p.quantity)}</p>
+                    {Number(p.discount) > 0 && (
+                      <p style={{ fontFamily: INTER, fontWeight: 400, fontSize: "11px", color: "var(--color-muted)" }}>{Math.round(Number(p.discount))}% OFF</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
 
           {/* Price Summary + GST breakdown */}
           <div style={{ paddingTop: "32px" }}>
