@@ -116,16 +116,18 @@ export function activeProductDiscount(p: { discount?: number; discount_expiry?: 
  */
 
 export type ProductRow = {
-  id: string;
-  title: string | null;
-  category: string | null;
-  sku: string | null;
-  price: number;
-  stock: number;
-  discount: number;
-  discount_expiry: string | null;
-  gst_rate: number;
-  hsn_code: string | null;
+  id: string;
+  title: string | null;
+  category: string | null;
+  sku: string | null;
+  price: number;
+  stock: number;
+  discount: number;
+  discount_expiry: string | null;
+  gst_rate: number;
+  hsn_code: string | null;
+  /** JSONB array of variant objects set when has_variants = true. */
+  variants?: Array<{ id: string; name: string; price: number; stock: number; sku?: string }> | null;
 };
 
 export type PriceItemsResult =
@@ -133,58 +135,78 @@ export type PriceItemsResult =
   | { ok: false; status: number; error: string };
 
 /**
- * Server-authoritative per-line pricing shared by /create-order and
- * /cod-create (identical validation order + discount rule in the original:
- * not-found → 400, not-purchasable (price<=0) → 400, insufficient stock →
- * 409, expiry-aware discount).
- */
+ * Server-authoritative per-line pricing shared by /create-order and
+ * /cod-create (identical validation order + discount rule in the original:
+ * not-found → 400, not-purchasable (price<=0) → 400, insufficient stock →
+ * 409, expiry-aware discount).
+ *
+ * When `variantId` is supplied for an item the function looks up that variant
+ * inside `product.variants` and uses the variant's price/stock instead of
+ * the product-level fields, while still applying the parent product's GST
+ * rate and discount.
+ */
 export function priceCartItems(
-  items: Array<{ productId?: string; quantity?: number }>,
-  productsById: Map<string, ProductRow>,
+  items: Array<{ productId?: string; variantId?: string | null; quantity?: number }>,
+  productsById: Map<string, ProductRow>,
 ): PriceItemsResult {
-  const lineItems: LineItem[] = [];
-  let subtotal = 0;
+  const lineItems: LineItem[] = [];
+  let subtotal = 0;
 
-  for (const it of items) {
-    const pid = String(it?.productId || "");
-    const qty = Math.floor(Number(it?.quantity) || 0);
-    if (!pid || qty <= 0) {
-      return { ok: false, status: 400, error: "Invalid cart item" };
-    }
+  for (const it of items) {
+    const pid = String(it?.productId || "");
+    const qty = Math.floor(Number(it?.quantity) || 0);
+    if (!pid || qty <= 0) {
+      return { ok: false, status: 400, error: "Invalid cart item" };
+    }
 
-    const p = productsById.get(pid);
-    if (!p) {
-      return { ok: false, status: 400, error: `Product not found: ${pid}` };
-    }
+    const p = productsById.get(pid);
+    if (!p) {
+      return { ok: false, status: 400, error: `Product not found: ${pid}` };
+    }
 
-    const price = Number(p.price || 0);
-    const stock = Number(p.stock || 0);
-    if (price <= 0) {
-      return { ok: false, status: 400, error: `Product not purchasable: ${p.title || pid}` };
-    }
-    if (stock < qty) {
-      return { ok: false, status: 409, error: `Not enough stock for ${p.title || pid}` };
-    }
+    // Resolve price & stock — prefer variant values when a variantId is supplied.
+    let price = Number(p.price || 0);
+    let stock = Number(p.stock || 0);
+    let resolvedSku: string | undefined = p.sku ?? undefined;
 
-    const finalDiscount = activeProductDiscount(p);
-    const finalPrice = price - (price * finalDiscount) / 100;
+    const variantId = it?.variantId;
+    if (variantId && Array.isArray(p.variants) && p.variants.length > 0) {
+      const variant = p.variants.find((v) => String(v.id) === String(variantId));
+      if (!variant) {
+        return { ok: false, status: 400, error: `Variant not found: ${variantId} for product ${pid}` };
+      }
+      price = Number(variant.price || 0);
+      stock = Number(variant.stock || 0);
+      if (variant.sku) resolvedSku = variant.sku;
+    }
 
-    subtotal += finalPrice * qty;
+    if (price <= 0) {
+      return { ok: false, status: 400, error: `Product not purchasable: ${p.title || pid}` };
+    }
+    if (stock < qty) {
+      return { ok: false, status: 409, error: `Not enough stock for ${p.title || pid}${variantId ? ` (variant ${variantId})` : ""}` };
+    }
 
-    lineItems.push({
-      productId: pid,
-      title: p.title || "Product",
-      category: p.category || "general",
-      quantity: qty,
-      originalPrice: price,
-      discount: finalDiscount,
-      finalPrice,
-      gstRate: Number(p.gst_rate || 0),
-      hsnCode: p.hsn_code || "",
-    });
-  }
+    const finalDiscount = activeProductDiscount(p);
+    const finalPrice = price - (price * finalDiscount) / 100;
 
-  return { ok: true, lineItems, subtotal };
+    subtotal += finalPrice * qty;
+
+    lineItems.push({
+      productId: pid,
+      title: p.title || "Product",
+      category: p.category || "general",
+      sku: resolvedSku,
+      quantity: qty,
+      originalPrice: price,
+      discount: finalDiscount,
+      finalPrice,
+      gstRate: Number(p.gst_rate || 0),
+      hsnCode: p.hsn_code || "",
+    });
+  }
+
+  return { ok: true, lineItems, subtotal };
 }
 
 /** Reads settings row id='shippingSettings'. Same defaults as the original (₹500 / ₹49). */

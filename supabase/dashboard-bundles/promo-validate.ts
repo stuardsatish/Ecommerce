@@ -8,9 +8,7 @@ import { createClient, type SupabaseClient, type User } from "npm:@supabase/supa
 /* ============================== cors.ts ============================== */
 const DEFAULT_ORIGINS = [
   "https://e-commerce-demo-website1.web.app",
-  "https://e-commerce-demo-website1.firebaseapp.com",
   "https://my-sweet-bec4a.web.app",
-  "https://my-sweet-bec4a.firebaseapp.com",
   "http://localhost:5173",
 ];
 function allowedOrigins(): string[] {

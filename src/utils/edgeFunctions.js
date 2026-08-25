@@ -1,8 +1,6 @@
 // Shared helper for calling Supabase Edge Functions from the client.
-// Replaces the old Firebase-ID-token `getAuthHeaders()` pattern duplicated
-// across razorpay.js / promo.js / reviews.js / CreateOrdersPage / BillingPage —
-// auth is Supabase-only now (see src/hooks/useAuth.js), so the bearer token
-// is the current Supabase session's access_token, not a Firebase ID token.
+// Auth is Supabase-only (see src/hooks/useAuth.js);
+// the bearer token is the current Supabase session's access_token.
 import { supabase } from "../context/SupabaseConfig"
 
 const PROJECT_URL = import.meta.env.VITE_SUPABASE_URL || ""

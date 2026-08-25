@@ -60,7 +60,7 @@ const getImage = (p) =>
     p.thumbnail ||
     p.image ||
     "https://picsum.photos/seed/" + (p.id || "x") + "/400/400";
-const getMrp = (p) => Number(p.price || 0); // Firebase price = MRP
+const getMrp = (p) => Number(p.price || 0); // price = MRP
 const getDiscount = (p) => {
     if (p.discountExpiry) {
         const expiry = new Date(p.discountExpiry).getTime();
@@ -766,7 +766,7 @@ const ProductsPage = () => {
 
     /* ============================================================
          MOBILE LAYOUT (≤640px) — matches the reference design.
-         All Firebase/Redux logic above is shared; this is layout only.
+         All logic above is shared; this is layout only.
       ============================================================ */
     if (isMobile) {
         const navIcon = (color) => ({ color });

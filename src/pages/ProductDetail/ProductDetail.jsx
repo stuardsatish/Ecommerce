@@ -55,7 +55,7 @@ const toReviewDate = (v) => {
     return isNaN(d.getTime()) ? null : d
 }
 
-// Normalises whatever shape `specs` has in Firebase (object | array of
+// Normalises whatever shape `specs` has (object | array of
 // objects | array of strings) into [{ label, value }] rows. Returns [] when absent.
 const normalizeSpecs = (specs) => {
     if (!specs) return []
@@ -128,6 +128,7 @@ const ProductDetail = () => {
     const [relatedProducts, setRelatedProducts] = useState([])
     const [selectedImageIndex, setSelectedImageIndex] = useState(0)
     const [quantity, setQuantity] = useState(1)
+    const [selectedVariant, setSelectedVariant] = useState(null)  // { id, name, price, stock, sku }
     const [activeTab, setActiveTab] = useState("description")
     const [reviewSortOrder, setReviewSortOrder] = useState("recent")
     const [showAllReviews, setShowAllReviews] = useState(false)
@@ -151,6 +152,7 @@ const ProductDetail = () => {
         setError(false)
         setSelectedImageIndex(0)
         setQuantity(1)
+        setSelectedVariant(null)
         setShowAllReviews(false)
         setActiveTab("description")
         const fetchProduct = async () => {
@@ -314,11 +316,16 @@ const ProductDetail = () => {
     const mainImage = product?.thumbnail || product?.image
     const galleryImages = product?.images || product?.productImages || product?.gallery || []
     const allImages = [mainImage, ...galleryImages].filter(Boolean)
-    const isOutOfStock = (product?.stock || 0) <= 0
+
+    // When a variant is selected, use its price/stock instead of the product-level fields.
+    const activeVariant = selectedVariant
+    const displayPrice = activeVariant ? Number(activeVariant.price) || 0 : (product ? Number(product.price) || 0 : 0)
+    const displayStock = activeVariant ? Number(activeVariant.stock) || 0 : (product ? Number(product.stock) || 0 : 0)
+    const isOutOfStock = displayStock <= 0
 
     // --- Mobile-only derivations (null-safe; desktop ignores these) ---
     const cartCount = cartItems.reduce((acc, item) => acc + (item.quantity || 0), 0)
-    const stockNum = Number(product?.stock || 0)
+    const stockNum = displayStock
     const stockWarning =
         stockNum <= 0
             ? "Out of stock"
@@ -332,7 +339,7 @@ const ProductDetail = () => {
        Desktop-only derivations
     ============================================================ */
     const dName = product?.title || product?.name || "Product"
-    const mrpNum = Number(product?.price || 0)
+    const mrpNum = activeVariant ? Number(activeVariant.price) || 0 : Number(product?.price || 0)
     const discountPct = (() => {
         if (product?.discountExpiry) {
             const expiry = new Date(product.discountExpiry).getTime();
@@ -378,13 +385,19 @@ const ProductDetail = () => {
     }
 
     const handleAddToCartDesktop = () => {
-        if (!user) {
-            navigate("/login")
+        if (!user) { navigate("/login"); return }
+        if (product?.hasVariants && !activeVariant) {
+            alert("Please select a variant before adding to cart")
             return
         }
-        const qty = (existingItem ? existingItem.quantity : 0) + quantity
-        for (let i = 0; i < quantity; i++) dispatch(addCart(product))
-        upsertCartItem(user.uid, product, qty)
+        const cartPayload = activeVariant
+            ? { ...product, variant_id: activeVariant.id, variant_name: activeVariant.name, selected_variant: activeVariant, price: activeVariant.price, stock: activeVariant.stock }
+            : product
+        const compoundId = activeVariant ? `${product.id}_${activeVariant.id}` : product.id
+        const existingVariantItem = cartItems.find((item) => String(item.compound_id || item.id) === String(compoundId))
+        const qty = (existingVariantItem ? existingVariantItem.quantity : 0) + quantity
+        for (let i = 0; i < quantity; i++) dispatch(addCart({ ...cartPayload, id: compoundId, compound_id: compoundId }))
+        upsertCartItem(user.uid, cartPayload, qty, activeVariant?.id || null)
     }
 
     const handleSelectImage = (i) => {
@@ -506,6 +519,38 @@ const ProductDetail = () => {
                                             </span>
                                         )}
                                     </div>
+
+                                    {/* Variant selector — mobile */}
+                                    {product?.hasVariants && product.variants?.length > 0 && (
+                                        <div style={{ display: "flex", flexDirection: "column", gap: "8px", paddingTop: "8px" }}>
+                                            <p style={{ fontWeight: 600, fontSize: "13px", letterSpacing: "0.6px", textTransform: "uppercase", color: "var(--color-muted)" }}>
+                                                {product.attributes?.[0]?.name || "Select Variant"}
+                                                {activeVariant && <span style={{ color: "var(--color-ink)", marginLeft: "6px" }}>— {activeVariant.name}</span>}
+                                            </p>
+                                            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                                                {product.variants.map((v) => {
+                                                    const isSelected = activeVariant?.id === v.id
+                                                    const outOfStock = Number(v.stock) <= 0
+                                                    return (
+                                                        <button
+                                                            key={v.id}
+                                                            onClick={() => setSelectedVariant(isSelected ? null : v)}
+                                                            disabled={outOfStock}
+                                                            style={{
+                                                                padding: "6px 14px", borderRadius: "9999px", fontSize: "13px", fontWeight: 600,
+                                                                border: isSelected ? "2px solid var(--color-ink)" : "1px solid var(--color-border-strong)",
+                                                                background: isSelected ? "var(--color-ink)" : "transparent",
+                                                                color: isSelected ? "var(--color-inverse)" : outOfStock ? "var(--color-muted)" : "var(--color-ink)",
+                                                                textDecoration: outOfStock ? "line-through" : "none", cursor: outOfStock ? "not-allowed" : "pointer",
+                                                            }}
+                                                        >
+                                                            {v.name} · ₹{v.price}
+                                                        </button>
+                                                    )
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
 
                                     {/* Stock warning */}
                                     {stockWarning && (
@@ -687,9 +732,14 @@ const ProductDetail = () => {
                                     <button
                                         onClick={() => {
                                             if (!user) { navigate("/login"); return }
-                                            const qty = nextAddQuantity(cartItems, id)
-                                            dispatch(addCart(product))
-                                            upsertCartItem(user.uid, product, qty)
+                                            if (product?.hasVariants && !activeVariant) { alert("Please select a variant"); return }
+                                            const cartPayload = activeVariant
+                                                ? { ...product, variant_id: activeVariant.id, variant_name: activeVariant.name, selected_variant: activeVariant, price: activeVariant.price, stock: activeVariant.stock }
+                                                : product
+                                            const compoundId = activeVariant ? `${product.id}_${activeVariant.id}` : product.id
+                                            const qty = nextAddQuantity(cartItems, compoundId)
+                                            dispatch(addCart({ ...cartPayload, id: compoundId, compound_id: compoundId }))
+                                            upsertCartItem(user.uid, cartPayload, qty, activeVariant?.id || null)
                                         }}
                                         className="flex items-center justify-center flex-shrink-0"
                                         style={{ width: "134.8px", height: "48px", border: "1px solid var(--color-ink)", borderRadius: "9999px", fontWeight: 700, fontSize: "16px", color: "var(--color-ink)", background: "transparent" }}
@@ -822,6 +872,42 @@ const ProductDetail = () => {
                                             </span>
                                         </div>
                                     </div>
+
+                                    {/* Variant selector — desktop */}
+                                    {product?.hasVariants && product.variants?.length > 0 && (
+                                        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                                            <span style={{ fontWeight: 600, fontSize: "14px", color: "var(--color-body)" }}>
+                                                {product.attributes?.[0]?.name || "Select Variant"}
+                                                {activeVariant && <span style={{ fontWeight: 700, color: "var(--color-ink)", marginLeft: "6px" }}>— {activeVariant.name}</span>}
+                                            </span>
+                                            <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
+                                                {product.variants.map((v) => {
+                                                    const isSelected = activeVariant?.id === v.id
+                                                    const outOfStock = Number(v.stock) <= 0
+                                                    return (
+                                                        <button
+                                                            key={v.id}
+                                                            onClick={() => setSelectedVariant(isSelected ? null : v)}
+                                                            disabled={outOfStock}
+                                                            style={{
+                                                                padding: "8px 18px", borderRadius: "9999px", fontSize: "14px", fontWeight: 600,
+                                                                border: isSelected ? "2px solid var(--color-ink)" : "1px solid var(--color-muted)",
+                                                                background: isSelected ? "var(--color-ink)" : "var(--color-background)",
+                                                                color: isSelected ? "var(--color-inverse)" : outOfStock ? "var(--color-muted)" : "var(--color-ink)",
+                                                                textDecoration: outOfStock ? "line-through" : "none", cursor: outOfStock ? "not-allowed" : "pointer",
+                                                                transition: "all 0.15s",
+                                                            }}
+                                                        >
+                                                            {v.name} &nbsp;·&nbsp; ₹{v.price}
+                                                        </button>
+                                                    )
+                                                })}
+                                            </div>
+                                            {product?.hasVariants && !activeVariant && (
+                                                <p style={{ fontSize: "12px", color: "var(--color-error)", fontWeight: 500 }}>Select a variant to continue</p>
+                                            )}
+                                        </div>
+                                    )}
 
                                     {/* Quantity + Actions */}
                                     <div className="flex flex-col" style={{ gap: "24px" }}>

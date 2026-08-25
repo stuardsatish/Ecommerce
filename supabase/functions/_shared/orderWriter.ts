@@ -1,7 +1,5 @@
-// Thin wrapper around the `create_order_tx` Postgres function
-// (docs/firebase-to-supabase-migration/02-order-rpc.sql) — the already-designed
-// replacement for functions/lib/orderWriter.js's writeOrderInTx(). Must be
-// called with the SERVICE ROLE client; the RPC is REVOKEd from anon/authenticated.
+// Thin wrapper around the `create_order_tx` Postgres function.
+// Must be called with the SERVICE ROLE client; the RPC is REVOKEd from anon/authenticated.
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { round2, type GstLineItem } from "./pricing.ts";
 

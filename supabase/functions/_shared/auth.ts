@@ -1,6 +1,5 @@
-// Port of functions/lib/util.js's requireAuth/isFeatureKilled/isUserBlocked,
-// plus orders.js's requireAdmin — re-based on Supabase Auth + `profiles`
-// instead of Firebase Admin SDK + Firestore.
+// Auth and permission helpers for Supabase Edge Functions.
+// Uses Supabase Auth + `profiles` table for all auth and role checks.
 import type { SupabaseClient, User } from "npm:@supabase/supabase-js@2";
 import { jsonResponse } from "./cors.ts";
 import { supabaseForRequest } from "./clients.ts";
@@ -27,8 +26,7 @@ export async function requireAuth(req: Request): Promise<AuthResult> {
 }
 
 /**
- * requireAuth() + a `profiles.role === 'admin'` check (port of orders.js's
- * requireAdmin, which verified the ID token then read Firestore `users/{uid}.role`).
+ * requireAuth() + a `profiles.role === 'admin'` check.
  */
 export async function requireAdmin(req: Request, admin: SupabaseClient): Promise<AuthResult> {
   const auth = await requireAuth(req);
@@ -60,11 +58,8 @@ export async function isFeatureKilled(admin: SupabaseClient, feature: string): P
 }
 
 /**
- * Per-user block check. Port of isUserBlocked — the Firestore version
- * checked `status === "blocked" || blocked === true`. `profiles` has no
- * separate boolean flag, only `status` (check-constrained to
- * active/blocked/suspended — UsersPage's admin "suspend" action sets
- * 'suspended'), so both non-active values are treated as blocked here.
+ * Per-user block check. Reads `profiles.status`;
+ * both 'blocked' and 'suspended' values are treated as blocked.
  */
 export async function isUserBlocked(admin: SupabaseClient, userId: string): Promise<boolean> {
   try {

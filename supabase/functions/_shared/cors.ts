@@ -1,17 +1,13 @@
 // Security headers + CORS + body-size guard for every Edge Function.
 //
-// Deno's HTTP handling has no Express/helmet/cors middleware equivalent, so
-// this is a hand-rolled port of functions/index.js's app.use(helmet(...)) +
-// app.use(cors(...)) + the express.json({limit:"64kb"}) body cap. Every
-// function in this project wraps its handler with `withSecurity()` so none
-// of them ship without these protections.
+// Hand-rolled equivalent of helmet() + cors() + body size cap for Deno.
+// Every function in this project wraps its handler with `withSecurity()`
+// so none of them ship without these protections.
 
 const DEFAULT_ORIGINS = [
-  "https://e-commerce-demo-website1.web.app",
-  "https://e-commerce-demo-website1.firebaseapp.com",
-  "https://my-sweet-bec4a.web.app",
-  "https://my-sweet-bec4a.firebaseapp.com",
-  "http://localhost:5173",
+  "https://e-commerce-demo-website1.web.app",
+  "https://my-sweet-bec4a.web.app",
+  "http://localhost:5173",
 ];
 
 function allowedOrigins(): string[] {

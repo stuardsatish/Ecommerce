@@ -216,7 +216,7 @@ const UserOrdersPage = () => {
   /* ---------------- UI ---------------- */
 
   /* ============================================================
-     MOBILE LAYOUT (≤640px) — shares all Firebase data/handlers.
+     MOBILE LAYOUT (≤640px) — shares all data/handlers above.
   ============================================================ */
   if (isMobile) {
     const statusStyles = {

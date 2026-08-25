@@ -372,7 +372,7 @@ const CreateOrdersPage = () => {
                     </span>
                     {result.parsedOrder?.isGuest && (
                       <span style={{ fontSize: "12px", color: "var(--color-muted)" }}>
-                        Created as guest order — no matching Firebase user found.
+                        Created as guest order — no matching user account found.
                       </span>
                     )}
                   </div>

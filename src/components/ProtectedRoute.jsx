@@ -4,7 +4,7 @@ import Loader from "./Common/Loader"
 import { getSession } from "../utils/sessionUtils"
 
 /**
- * Role-aware route guard. Checks BOTH the Redux user (Firebase-backed source
+ * Role-aware route guard. Checks BOTH the Redux user (Supabase-backed source
  * of truth) and the per-tab sessionStorage snapshot.
  *
  * @param {Object}   props
@@ -21,7 +21,7 @@ export default function ProtectedRoute({ allowedRoles = [], children }) {
   if (!user) return <Navigate to="/login" replace />
 
   // Tamper check: if sessionStorage role was hand-edited to differ from the
-  // Redux/Firebase role, trust the Firebase-backed role (Redux) for guarding.
+  // Redux/Supabase role, trust the Supabase-backed role (Redux) for guarding.
   const session = getSession()
   const effectiveRole = user.role || session?.role || null
 

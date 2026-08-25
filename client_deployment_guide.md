@@ -35,7 +35,7 @@
 
 | Layer | Technology | Where it lives |
 |---|---|---|
-| Frontend | React + Vite | Deployed to Vercel / Firebase Hosting |
+| Frontend | React + Vite | Deployed to Vercel |
 | Database + Auth | Supabase (PostgreSQL + Auth) | Supabase project |
 | Serverless functions | Supabase Edge Functions (Deno) | Same Supabase project |
 | Payment gateway | Razorpay | Client's own Razorpay account |
@@ -492,7 +492,7 @@ Go to **Project Settings → Edge Functions → Manage secrets** and add:
 | `RAZORPAY_KEY_ID` | `rzp_live_XXXX` | Client's Razorpay Dashboard → API Keys |
 | `RAZORPAY_KEY_SECRET` | `XXXX` | Client's Razorpay Dashboard → API Keys |
 | `RAZORPAY_WEBHOOK_SECRET` | `XXXX` | Client's Razorpay Dashboard → Webhooks |
-| `ALLOWED_ORIGINS` | `https://client-domain.com,https://client-domain.firebaseapp.com` | Client's deployed frontend URL |
+| `ALLOWED_ORIGINS` | `https://client-domain.com` | Client's deployed frontend URL |
 
 > [!NOTE]
 > `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` are automatically injected by Supabase into Edge Functions — you do NOT need to set these manually.
@@ -578,11 +578,8 @@ echo "VITE_SUPABASE_ANON_KEY=<client-anon-key>" >> .env
 # 2. Build
 npm run build
 
-# 3a. Deploy to Vercel
+# 3. Deploy to Vercel
 npx vercel --prod
-
-# 3b. OR deploy to Firebase Hosting
-firebase deploy --only hosting
 ```
 
 Set the **Razorpay Key ID** in the frontend environment too if it's used directly:
@@ -843,7 +840,7 @@ FRONTEND
 [ ] Create .env with client's VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
 [ ] Update package.json "name" if needed
 [ ] Run: npm run build
-[ ] Deploy to Vercel / Firebase Hosting
+[ ] Deploy to Vercel
 
 SUPABASE AUTH
 [ ] Set Site URL to client's domain

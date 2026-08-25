@@ -1,12 +1,10 @@
-// Port of AdminUploadOrders.jsx's bulk CSV order import (previously wrote
-// straight to Firestore — see docs/firebase-to-supabase-migration for the
-// finding that flagged this as unmigrated). Admin uploads a CSV of
-// historical orders; this validates each row, matches every "product" cell
-// against the live catalog (so stock/stats/GST stay real), groups rows by
-// `order_id`, and writes one order per group via create_order_tx — the same
-// atomic stock/customer_stats/product_stats/inventory_logs/analytics path
-// every other order-creation route (Razorpay/COD/billing/WhatsApp-paste)
-// already uses. One bad order group never blocks the rest of the batch.
+// Admin bulk CSV order import. Admin uploads a CSV of historical orders;
+// this validates each row, matches every "product" cell against the live
+// catalog (so stock/stats/GST stay real), groups rows by `order_id`, and
+// writes one order per group via create_order_tx — the same atomic path
+// (stock/customer_stats/product_stats/inventory_logs/analytics) that every
+// other order-creation route (Razorpay/COD/billing/WhatsApp-paste) uses.
+// One bad order group never blocks the rest of the batch.
 import { handlePreflight, jsonResponse, methodNotAllowed, readBody } from "../_shared/cors.ts";
 import { supabaseAdmin } from "../_shared/clients.ts";
 import { requireAdmin, isFeatureKilled } from "../_shared/auth.ts";

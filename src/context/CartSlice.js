@@ -1,5 +1,13 @@
 import { createSlice } from "@reduxjs/toolkit";
 
+/**
+ * Cart item identity:
+ *  - Single product  → item.id = productId
+ *  - Variant product → item.id = `${productId}_${variantId}`
+ *
+ * The compound id is set by the caller (ProductDetail / CartPage) before
+ * dispatching, so all reducers here remain a simple `x.id === item.id` check.
+ */
 const cartSlice = createSlice({
   name: "cart",
   initialState: {
@@ -22,12 +30,11 @@ const cartSlice = createSlice({
       if (existingItem) {
         existingItem.quantity += 1
       } else {
-        state.cartItems.push({ ...item, quantity: 1 })
+        state.cartItems.push({ ...item, quantity: item.quantity || 1 })
       }
     },
 
     removeCart: (state, action) => {
-
       const itemID = action.payload
 
       const existingItem = state.cartItems.find(

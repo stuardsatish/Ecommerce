@@ -1,6 +1,4 @@
-// Maps a `products` row (snake_case, per docs/firebase-to-supabase-migration/01-schema.sql)
-// to the camelCase shape the rest of the app was already built around when
-// products lived in Firestore. Keeps every migrated read site consistent.
+// Maps a `products` row (snake_case) to the camelCase shape used throughout the app.
 export const mapProductRow = (row) => {
   if (!row) return row
   return {
@@ -28,6 +26,10 @@ export const mapProductRow = (row) => {
     reviewCount: Number(row.review_count) || 0,
     status: row.status || "active",
     createdAt: row.created_at,
+    // Variant / combination product fields
+    hasVariants: Boolean(row.has_variants),
+    variants: Array.isArray(row.variants) ? row.variants : [],
+    attributes: Array.isArray(row.attributes) ? row.attributes : [],
   }
 }
 

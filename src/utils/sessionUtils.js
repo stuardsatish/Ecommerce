@@ -1,9 +1,9 @@
 /**
  * Cross-tab auth session helpers.
  *
- * Firebase Auth + Redux remain the source of truth; this module mirrors the
- * authenticated identity into `sessionStorage` (per-tab) and coordinates tabs
- * over a `BroadcastChannel` so login/logout stay in sync everywhere.
+ * Mirrors the authenticated identity (Supabase + Redux) into `sessionStorage`
+ * (per-tab) and coordinates tabs over a `BroadcastChannel` so login/logout
+ * stay in sync everywhere.
  */
 
 const SESSION_KEY = "auth_session"

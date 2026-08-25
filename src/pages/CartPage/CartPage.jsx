@@ -309,7 +309,9 @@ const CartPage = () => {
             Firestore and applies the discount — the client never determines the value. */
       const rzpOrder = await createRazorpayOrder({
         items: cartItems.map((i) => ({
-          productId: i.id,
+          productId: i.productId || i.id,
+          variantId: i.variant_id || null,
+          variant_name: i.variant_name || null,
           quantity: i.quantity,
         })),
         promoCode: appliedPromo ? appliedPromo.code : "",
@@ -434,7 +436,11 @@ const CartPage = () => {
       setIsProcessing(true);
 
       await createCodOrder({
-        items: cartItems.map((i) => ({ productId: i.id, quantity: i.quantity })),
+        items: cartItems.map((i) => ({
+          productId: i.productId || i.id,
+          variantId: i.variant_id || null,
+          quantity: i.quantity,
+        })),
         promoCode: appliedPromo ? appliedPromo.code : "",
       });
 
@@ -468,10 +474,11 @@ const CartPage = () => {
         const mrp = Number(item.price || 0);
         const discount = isDiscountActive(item) ? Number(item.discount || 0) : 0;
         const discountedPrice = Number((mrp - (mrp * discount) / 100).toFixed(2));
+        const variantLabel = item.variant_name ? ` [${item.variant_name}]` : "";
         if (discount > 0) {
-          itemsStr += `${index + 1}. ${item.title}\n Quantity: ${item.quantity}\n MRP: ${money(mrp)}\n Discount: ${discount}%\n Discounted Price: ${money(discountedPrice)}\n\n`;
+          itemsStr += `${index + 1}. ${item.title}${variantLabel}\n Quantity: ${item.quantity}\n MRP: ${money(mrp)}\n Discount: ${discount}%\n Discounted Price: ${money(discountedPrice)}\n\n`;
         } else {
-          itemsStr += `${index + 1}. ${item.title}\n Quantity: ${item.quantity}\n MRP: ${money(mrp)}\n Discounted Price: ${money(mrp)}\n\n`;
+          itemsStr += `${index + 1}. ${item.title}${variantLabel}\n Quantity: ${item.quantity}\n MRP: ${money(mrp)}\n Discounted Price: ${money(mrp)}\n\n`;
         }
       });
 
@@ -1085,7 +1092,7 @@ Thank you.`;
                 style={{ flex: "1 1 65%", gap: "24px", minWidth: 0 }}
               >
                 {cartItems.map((item) => {
-                  const subtitle = item.variant || item.category || "";
+                  const subtitle = item.variant_name || item.variant || item.category || "";
                   return (
                     <div
                       key={item.id}
