@@ -26,10 +26,11 @@ export const nextRemoveQuantity = (cartItems, cartId) => {
  */
 export const upsertCartItem = async (uid, product, quantity) => {
   if (!uid) return
-  const variantId   = product.variantId   || ""
-  const variantName = product.variantName || null
+  // Accept both camelCase (variantId) and snake_case (variant_id) — callers use both.
+  const variantId   = product.variantId   || product.variant_id   || ""
+  const variantName = product.variantName || product.variant_name || null
   // product_id stored in the DB is always the actual products-table id
-  const realProductId = product.productId || product.id
+  const realProductId = product.productId || String(product.id || "").split("_")[0]
 
   const { error } = await supabase.from("cart_items").upsert(
     {
@@ -37,7 +38,7 @@ export const upsertCartItem = async (uid, product, quantity) => {
       product_id:       String(realProductId),
       variant_id:       variantId,
       variant_name:     variantName,
-      selected_variant: product.selectedVariant || null,
+      selected_variant: product.selected_variant || product.selectedVariant || null,
       quantity,
       title:            product.title || "",
       image:            product.thumbnail || product.image || "",
@@ -51,29 +52,64 @@ export const upsertCartItem = async (uid, product, quantity) => {
   if (error) console.error("Cart upsert error:", error)
 }
 
-export const removeCartItem = async (uid, productId, variantId = "") => {
+export const parseCartIds = (productOrId, variantId = "") => {
+  if (!productOrId) return { productId: "", variantId: "" }
+
+  if (typeof productOrId === "object") {
+    const pId = productOrId.productId || productOrId.product_id || ""
+    const vId = productOrId.variant_id || productOrId.variantId || ""
+    if (pId) {
+      return { productId: String(pId), variantId: String(vId || "") }
+    }
+    const rawId = String(productOrId.id || productOrId.compound_id || "")
+    if (rawId.includes("_var_")) {
+      const idx = rawId.indexOf("_var_")
+      return { productId: rawId.slice(0, idx), variantId: rawId.slice(idx + 1) }
+    }
+    return { productId: rawId, variantId: String(vId || "") }
+  }
+
+  const rawId = String(productOrId)
+  if (rawId.includes("_var_")) {
+    const idx = rawId.indexOf("_var_")
+    return { productId: rawId.slice(0, idx), variantId: rawId.slice(idx + 1) }
+  }
+  return { productId: rawId, variantId: String(variantId || "") }
+}
+
+export const removeCartItem = async (uid, productOrId, variantId = "") => {
   if (!uid) return
-  const { error } = await supabase
-    .from("cart_items")
-    .delete()
-    .eq("user_id",    uid)
-    .eq("product_id", String(productId))
-    .eq("variant_id", variantId)
+  const { productId: pId, variantId: vId } = parseCartIds(productOrId, variantId)
+  if (!pId) return
+
+  let query = supabase.from("cart_items").delete().eq("user_id", uid).eq("product_id", pId)
+  if (vId) {
+    query = query.eq("variant_id", vId)
+  } else {
+    // Single product: variant_id is either null or ''
+    query = query.or("variant_id.is.null,variant_id.eq.")
+  }
+
+  const { error } = await query
   if (error) console.error("Cart remove error:", error)
 }
 
-export const decrementOrRemoveCartItem = async (uid, productId, newQuantity, variantId = "") => {
+export const decrementOrRemoveCartItem = async (uid, productOrId, newQuantity, variantId = "") => {
   if (!uid) return
+  const { productId: pId, variantId: vId } = parseCartIds(productOrId, variantId)
+  if (!pId) return
+
   if (newQuantity > 0) {
-    const { error } = await supabase
-      .from("cart_items")
-      .update({ quantity: newQuantity })
-      .eq("user_id",    uid)
-      .eq("product_id", String(productId))
-      .eq("variant_id", variantId)
+    let query = supabase.from("cart_items").update({ quantity: newQuantity }).eq("user_id", uid).eq("product_id", pId)
+    if (vId) {
+      query = query.eq("variant_id", vId)
+    } else {
+      query = query.or("variant_id.is.null,variant_id.eq.")
+    }
+    const { error } = await query
     if (error) console.error("Cart update error:", error)
   } else {
-    await removeCartItem(uid, productId, variantId)
+    await removeCartItem(uid, productOrId, variantId)
   }
 }
 

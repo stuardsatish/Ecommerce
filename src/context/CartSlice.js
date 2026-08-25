@@ -22,37 +22,43 @@ const cartSlice = createSlice({
 
     addCart: (state, action) => {
       const item = action.payload
+      const itemId = String(item.id || item.compound_id || "")
+      const qtyToAdd = typeof item.qtyToAdd === "number" ? item.qtyToAdd : (typeof item.quantity === "number" ? item.quantity : 1)
 
       const existingItem = state.cartItems.find(
-        (x) => x.id === item.id
+        (x) => String(x.id || x.compound_id) === itemId
       )
 
       if (existingItem) {
-        existingItem.quantity += 1
+        existingItem.quantity += qtyToAdd
       } else {
-        state.cartItems.push({ ...item, quantity: item.quantity || 1 })
+        const { qtyToAdd: _discard, ...rest } = item
+        state.cartItems.push({ ...rest, id: itemId, quantity: qtyToAdd })
       }
     },
 
     removeCart: (state, action) => {
-      const itemID = action.payload
+      const itemID = String(action.payload)
 
       const existingItem = state.cartItems.find(
-        (x) => x.id === itemID
+        (x) => String(x.id || x.compound_id) === itemID
       )
 
-      if (existingItem.quantity > 1) {
-        existingItem.quantity -= 1
-      } else {
-        state.cartItems = state.cartItems.filter(
-          (item) => item.id !== itemID
-        )
+      if (existingItem) {
+        if (existingItem.quantity > 1) {
+          existingItem.quantity -= 1
+        } else {
+          state.cartItems = state.cartItems.filter(
+            (item) => String(item.id || item.compound_id) !== itemID
+          )
+        }
       }
     },
 
     // Remove an item entirely, regardless of quantity.
     deleteCart: (state, action) => {
-      state.cartItems = state.cartItems.filter((item) => item.id !== action.payload)
+      const itemID = String(action.payload)
+      state.cartItems = state.cartItems.filter((item) => String(item.id || item.compound_id) !== itemID)
     },
 
     clearCart: (state) => {

@@ -65,6 +65,7 @@ const NavbarSpacer = () => {
   return <div aria-hidden="true" className="hidden sm:block" style={{ height: "88px" }} />
 }
 
+
 const areCartItemsEqual = (arr1, arr2) => {
   if (!arr1 || !arr2) return false
   if (arr1.length !== arr2.length) return false
@@ -75,6 +76,7 @@ const areCartItemsEqual = (arr1, arr2) => {
     if (item1.price !== item2.price) return false
     if (Number(item1.discount || 0) !== Number(item2.discount || 0)) return false
     if ((item1.discountExpiry || "") !== (item2.discountExpiry || "")) return false
+    if ((item1.variant_id || "") !== (item2.variant_id || "")) return false
   }
   return true
 }
@@ -114,10 +116,12 @@ const App = () => {
     const loadCartAndWishlist = async (uid) => {
       if (unsubCart) { unsubCart(); unsubCart = null }
 
+      let fetchCartTimeout = null
+
       const fetchCart = async () => {
         const { data, error } = await supabase
           .from("cart_items")
-          .select("quantity, product_id, products(title, price, discount, discount_expiry, stock, thumbnail, image, category)")
+          .select("quantity, product_id, variant_id, variant_name, price, title, image, category, products(title, price, discount, discount_expiry, stock, thumbnail, image, category)")
           .eq("user_id", uid)
 
         if (error) {
@@ -127,38 +131,63 @@ const App = () => {
 
         const formattedItems = (data || []).map((row) => {
           const p = row.products || {}
+          const variantId = row.variant_id || ""
+          // Compound id matches CartSlice expectations: productId_variantId for variants
+          const compoundId = variantId ? `${row.product_id}_${variantId}` : row.product_id
           return {
-            id: row.product_id,
-            title: p.title || "",
-            price: Number(p.price) || 0,
+            id: compoundId,
+            compound_id: compoundId,
+            productId: row.product_id,
+            variant_id: variantId,
+            variant_name: row.variant_name || "",
+            title: p.title || row.title || "",
+            // Use variant price from cart_items row (already stored correctly on add)
+            price: variantId ? (Number(row.price) || 0) : (Number(p.price) || 0),
             quantity: row.quantity,
-            image: p.thumbnail || p.image || "",
+            image: p.thumbnail || p.image || row.image || "",
             stock: p.stock || 0,
-            category: p.category || "general",
-            // Always use live product discount & expiry so expired discounts
-            // don't persist in the cart when a product's discount changes.
+            category: p.category || row.category || "general",
             discount: Number(p.discount || 0),
             discountExpiry: p.discount_expiry || "",
           }
         })
 
-        if (!areCartItemsEqual(formattedItems, cartItemsRef.current)) {
-          dispatch(setCart(formattedItems))
+        // Merge with optimistic local state so fast clicks aren't rolled back by delayed DB fetches
+        const mergedItems = formattedItems.map((dbItem) => {
+          const localItem = cartItemsRef.current.find((x) => String(x.id || x.compound_id) === String(dbItem.id))
+          if (localItem && localItem.quantity > dbItem.quantity) {
+            return { ...dbItem, quantity: localItem.quantity }
+          }
+          return dbItem
+        })
+
+        if (!areCartItemsEqual(mergedItems, cartItemsRef.current)) {
+          dispatch(setCart(mergedItems))
         }
       }
 
       await fetchCart()
+
+      const debouncedFetchCart = () => {
+        if (fetchCartTimeout) clearTimeout(fetchCartTimeout)
+        fetchCartTimeout = setTimeout(() => {
+          fetchCart()
+        }, 300)
+      }
 
       const channel = supabase
         .channel(`cart-items-${uid}`)
         .on(
           "postgres_changes",
           { event: "*", schema: "public", table: "cart_items", filter: `user_id=eq.${uid}` },
-          fetchCart
+          debouncedFetchCart
         )
         .subscribe()
 
-      unsubCart = () => supabase.removeChannel(channel)
+      unsubCart = () => {
+        if (fetchCartTimeout) clearTimeout(fetchCartTimeout)
+        supabase.removeChannel(channel)
+      }
 
       const { data: wishlistRows, error: wishlistError } = await supabase
         .from("wishlist_items")

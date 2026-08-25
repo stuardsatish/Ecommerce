@@ -149,6 +149,7 @@ const ProductDetail = () => {
 
     // FETCH PRODUCT
     useEffect(() => {
+        window.scrollTo(0, 0)          // always open at the top
         setError(false)
         setSelectedImageIndex(0)
         setQuantity(1)
@@ -302,14 +303,14 @@ const ProductDetail = () => {
         if (loading || !product || isMobile) return
 
         const tl = gsap.timeline({ defaults: { ease: "power3.out" } })
-        tl.from(".dt-breadcrumb", { y: -10, opacity: 0, duration: 0.4 })
-            .from(".dt-gallery", { x: -30, opacity: 0, duration: 0.6 }, "<")
-            .from(".dt-details", { x: 30, opacity: 0, duration: 0.6 }, "<")
-            .from(".dt-tabs", { y: 16, opacity: 0, duration: 0.5 }, "-=0.2")
+        tl.from(".dt-breadcrumb", { y: -10, duration: 0.4 })
+            .from(".dt-gallery", { x: -20, duration: 0.5 }, "<")
+            .from(".dt-details", { x: 20, duration: 0.5 }, "<")
+            .from(".dt-tabs", { y: 12, duration: 0.4 }, "-=0.2")
 
         const cards = gsap.utils.toArray(".dt-related-card")
         if (cards.length) {
-            gsap.from(cards, { y: 20, opacity: 0, stagger: 0.1, duration: 0.5, delay: 0.2 })
+            gsap.from(cards, { y: 16, stagger: 0.08, duration: 0.4, delay: 0.2 })
         }
     }, { scope: containerRef, dependencies: [product, loading, isMobile, activeTab] })
 
@@ -389,17 +390,13 @@ const ProductDetail = () => {
 
     const handleAddToCartDesktop = () => {
         if (!user) { navigate("/login"); return }
-        if (product?.hasVariants && !activeVariant) {
-            alert("Please select a variant before adding to cart")
-            return
-        }
         const cartPayload = activeVariant
             ? { ...product, variant_id: activeVariant.id, variant_name: activeVariant.name, selected_variant: activeVariant, price: activeVariant.price, stock: activeVariant.stock }
             : product
         const compoundId = activeVariant ? `${product.id}_${activeVariant.id}` : product.id
         const existingVariantItem = cartItems.find((item) => String(item.compound_id || item.id) === String(compoundId))
         const qty = (existingVariantItem ? existingVariantItem.quantity : 0) + quantity
-        for (let i = 0; i < quantity; i++) dispatch(addCart({ ...cartPayload, id: compoundId, compound_id: compoundId }))
+        dispatch(addCart({ ...cartPayload, id: compoundId, compound_id: compoundId, qtyToAdd: quantity }))
         upsertCartItem(user.uid, cartPayload, qty, activeVariant?.id || null)
     }
 
@@ -704,66 +701,77 @@ const ProductDetail = () => {
                                     >
                                         Out of Stock
                                     </button>
-                                ) : existingItem ? (
-                                    <div
-                                        className="flex items-center justify-between flex-shrink-0"
-                                        style={{ width: "134.8px", height: "48px", border: "1px solid var(--color-ink)", borderRadius: "9999px", overflow: "hidden" }}
-                                    >
+                                ) : (() => {
+                                    const currentCartCompoundId = activeVariant ? `${product?.id || id}_${activeVariant.id}` : (product?.id || id)
+                                    const mobileCartItem = cartItems.find((item) => String(item.compound_id || item.id) === String(currentCartCompoundId))
+
+                                    return mobileCartItem ? (
+                                        <div
+                                            className="flex items-center justify-between flex-shrink-0"
+                                            style={{ width: "134.8px", height: "48px", border: "1px solid var(--color-ink)", borderRadius: "9999px", overflow: "hidden" }}
+                                        >
+                                            <button
+                                                onClick={() => {
+                                                    const qty = nextRemoveQuantity(cartItems, currentCartCompoundId)
+                                                    dispatch(removeCart(String(currentCartCompoundId)))
+                                                    decrementOrRemoveCartItem(user?.uid, currentCartCompoundId, qty, activeVariant?.id || null)
+                                                }}
+                                                aria-label="Decrease quantity"
+                                                className="flex items-center justify-center h-full"
+                                                style={{ width: "44px", color: "var(--color-ink)" }}
+                                            >
+                                                <Minus size={16} />
+                                            </button>
+                                            <span style={{ fontWeight: 700, fontSize: "16px", color: "var(--color-ink)", minWidth: "20px", textAlign: "center" }}>
+                                                {mobileCartItem.quantity}
+                                            </span>
+                                            <button
+                                                disabled={mobileCartItem.quantity >= (displayStock || 0)}
+                                                onClick={() => {
+                                                    const qty = nextAddQuantity(cartItems, currentCartCompoundId)
+                                                    const cartPayload = activeVariant
+                                                        ? { ...product, variant_id: activeVariant.id, variant_name: activeVariant.name, selected_variant: activeVariant, price: activeVariant.price, stock: activeVariant.stock }
+                                                        : product
+                                                    dispatch(addCart({ ...cartPayload, id: currentCartCompoundId, compound_id: currentCartCompoundId, qtyToAdd: 1 }))
+                                                    upsertCartItem(user?.uid, cartPayload, qty, activeVariant?.id || null)
+                                                }}
+                                                aria-label="Increase quantity"
+                                                className="flex items-center justify-center h-full"
+                                                style={{ width: "44px", color: "var(--color-ink)", opacity: mobileCartItem.quantity >= (displayStock || 0) ? 0.3 : 1 }}
+                                            >
+                                                <Plus size={16} />
+                                            </button>
+                                        </div>
+                                    ) : (
                                         <button
                                             onClick={() => {
-                                                const qty = nextRemoveQuantity(cartItems, id)
-                                                dispatch(removeCart(String(id)))
-                                                decrementOrRemoveCartItem(user?.uid, id, qty)
+                                                if (!user) { navigate("/login"); return }
+                                                const cartPayload = activeVariant
+                                                    ? { ...product, variant_id: activeVariant.id, variant_name: activeVariant.name, selected_variant: activeVariant, price: activeVariant.price, stock: activeVariant.stock }
+                                                    : product
+                                                const qty = nextAddQuantity(cartItems, currentCartCompoundId)
+                                                dispatch(addCart({ ...cartPayload, id: currentCartCompoundId, compound_id: currentCartCompoundId, qtyToAdd: 1 }))
+                                                upsertCartItem(user.uid, cartPayload, qty, activeVariant?.id || null)
                                             }}
-                                            aria-label="Decrease quantity"
-                                            className="flex items-center justify-center h-full"
-                                            style={{ width: "44px", color: "var(--color-ink)" }}
+                                            className="flex items-center justify-center flex-shrink-0"
+                                            style={{ width: "134.8px", height: "48px", border: "1px solid var(--color-ink)", borderRadius: "9999px", fontWeight: 700, fontSize: "16px", color: "var(--color-ink)", background: "transparent" }}
                                         >
-                                            <Minus size={16} />
+                                            Add to Cart
                                         </button>
-                                        <span style={{ fontWeight: 700, fontSize: "16px", color: "var(--color-ink)", minWidth: "20px", textAlign: "center" }}>
-                                            {existingItem.quantity}
-                                        </span>
-                                        <button
-                                            disabled={existingItem.quantity >= (product.stock || 0)}
-                                            onClick={() => {
-                                                const qty = nextAddQuantity(cartItems, id)
-                                                dispatch(addCart(product))
-                                                upsertCartItem(user?.uid, product, qty)
-                                            }}
-                                            aria-label="Increase quantity"
-                                            className="flex items-center justify-center h-full"
-                                            style={{ width: "44px", color: "var(--color-ink)", opacity: existingItem.quantity >= (product.stock || 0) ? 0.3 : 1 }}
-                                        >
-                                            <Plus size={16} />
-                                        </button>
-                                    </div>
-                                ) : (
-                                    <button
-                                        onClick={() => {
-                                            if (!user) { navigate("/login"); return }
-                                            if (product?.hasVariants && !activeVariant) { alert("Please select a variant"); return }
-                                            const cartPayload = activeVariant
-                                                ? { ...product, variant_id: activeVariant.id, variant_name: activeVariant.name, selected_variant: activeVariant, price: activeVariant.price, stock: activeVariant.stock }
-                                                : product
-                                            const compoundId = activeVariant ? `${product.id}_${activeVariant.id}` : product.id
-                                            const qty = nextAddQuantity(cartItems, compoundId)
-                                            dispatch(addCart({ ...cartPayload, id: compoundId, compound_id: compoundId }))
-                                            upsertCartItem(user.uid, cartPayload, qty, activeVariant?.id || null)
-                                        }}
-                                        className="flex items-center justify-center flex-shrink-0"
-                                        style={{ width: "134.8px", height: "48px", border: "1px solid var(--color-ink)", borderRadius: "9999px", fontWeight: 700, fontSize: "16px", color: "var(--color-ink)", background: "transparent" }}
-                                    >
-                                        Add to Cart
-                                    </button>
-                                )}
+                                    )
+                                })()}
                                 <button
                                     onClick={() => {
                                         if (!user) { navigate("/login"); return }
-                                        if (!existingItem) {
-                                            const qty = nextAddQuantity(cartItems, id)
-                                            dispatch(addCart(product))
-                                            upsertCartItem(user.uid, product, qty)
+                                        const currentCartCompoundId = activeVariant ? `${product?.id || id}_${activeVariant.id}` : (product?.id || id)
+                                        const mobileCartItem = cartItems.find((item) => String(item.compound_id || item.id) === String(currentCartCompoundId))
+                                        const cartPayload = activeVariant
+                                            ? { ...product, variant_id: activeVariant.id, variant_name: activeVariant.name, selected_variant: activeVariant, price: activeVariant.price, stock: activeVariant.stock }
+                                            : product
+                                        if (!mobileCartItem) {
+                                            const qty = nextAddQuantity(cartItems, currentCartCompoundId)
+                                            dispatch(addCart({ ...cartPayload, id: currentCartCompoundId, compound_id: currentCartCompoundId, qtyToAdd: 1 }))
+                                            upsertCartItem(user.uid, cartPayload, qty, activeVariant?.id || null)
                                         }
                                         navigate("/cart")
                                     }}
@@ -920,9 +928,7 @@ const ProductDetail = () => {
                                                     )
                                                 })}
                                             </div>
-                                            {product?.hasVariants && !activeVariant && (
-                                                <p style={{ fontSize: "12px", color: "var(--color-error)", fontWeight: 500 }}>Select a variant to continue</p>
-                                            )}
+
                                         </div>
                                     )}
 
