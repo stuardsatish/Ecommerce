@@ -191,7 +191,7 @@ const AddProductPage = () => {
     =============================================================== */
     const saveProduct = async (saveStatus) => {
         if (!form.title || !form.category) return alert("Title and Category are required")
-        if (productType === "single" && !form.price) return alert("Price is required")
+        if (!form.price) return alert("Price is required")
         if (productType === "variant") {
             if (variantRows.length === 0) return alert("Add at least one variant combination before saving")
             if (variantRows.some((v) => !v.name || !(Number(v.price) > 0)))
@@ -222,12 +222,8 @@ const AddProductPage = () => {
             setUploadProgress(100)
 
             const isVariant = productType === "variant"
-            const savedPrice = isVariant
-                ? Math.min(...variantRows.map((v) => Number(v.price) || 0))
-                : Number(form.price) || 0
-            const savedStock = isVariant
-                ? variantRows.reduce((s, v) => s + (Number(v.stock) || 0), 0)
-                : Number(form.stock) || 0
+            const savedPrice = Number(form.price) || 0
+            const savedStock = Number(form.stock) || 0
 
             // Upload per-variant images
             const variantsSaved = []
@@ -512,42 +508,22 @@ const AddProductPage = () => {
                                 )}
                             </div>
 
-                            {/* Price — editable for single, auto-calculated for variant */}
+                            {/* Price */}
                             <div>
                                 <label className={labelCls}>
                                     Price (₹)
-                                    {productType === "variant" && (
-                                        <span className="ml-2 text-[11px] font-normal" style={{ color: C.textS }}>auto — lowest variant price</span>
-                                    )}
                                 </label>
                                 <div className="relative">
                                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[15px]" style={{ color: C.textS }}>₹</span>
-                                    {productType === "single" ? (
-                                        <input name="price" type="number" value={form.price} onChange={onField} placeholder="0.00" className={`${inputCls} pl-7`} />
-                                    ) : (
-                                        <input type="text" readOnly
-                                            value={variantRows.length > 0 ? Math.min(...variantRows.map(v => Number(v.price) || 0)).toFixed(2) : "Set in combinations below"}
-                                            className={`${inputCls} pl-7`}
-                                            style={{ opacity: 0.6, cursor: "not-allowed", background: "var(--color-surface-muted)" }} />
-                                    )}
+                                    <input name="price" type="number" value={form.price} onChange={onField} placeholder="0.00" className={`${inputCls} pl-7`} />
                                 </div>
                             </div>
-                            {/* Stock — editable for single, auto-calculated for variant */}
+                            {/* Stock */}
                             <div>
                                 <label className={labelCls}>
                                     Stock Quantity
-                                    {productType === "variant" && (
-                                        <span className="ml-2 text-[11px] font-normal" style={{ color: C.textS }}>auto — sum of all variants</span>
-                                    )}
                                 </label>
-                                {productType === "single" ? (
-                                    <input name="stock" type="number" value={form.stock} onChange={onField} placeholder="0" className={inputCls} />
-                                ) : (
-                                    <input type="text" readOnly
-                                        value={variantRows.length > 0 ? variantRows.reduce((s,v) => s + (Number(v.stock)||0), 0) : "Set in combinations below"}
-                                        className={inputCls}
-                                        style={{ opacity: 0.6, cursor: "not-allowed", background: "var(--color-surface-muted)" }} />
-                                )}
+                                <input name="stock" type="number" value={form.stock} onChange={onField} placeholder="0" className={inputCls} />
                             </div>
 
                             <div>
