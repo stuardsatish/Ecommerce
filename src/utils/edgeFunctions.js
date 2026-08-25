@@ -3,7 +3,7 @@
 // the bearer token is the current Supabase session's access_token.
 import { supabase } from "../context/SupabaseConfig"
 
-const PROJECT_URL = import.meta.env.VITE_SUPABASE_URL || ""
+const PROJECT_URL = import.meta.env.VITE_SUPABASE_URL || "https://hexosjsftzdqmwqbeahy.supabase.co"
 export const FUNCTIONS_BASE = `${PROJECT_URL}/functions/v1`
 
 /** JSON headers + the current Supabase session's access token, if any. */
