@@ -6,6 +6,7 @@ import { upsertCartItem, decrementOrRemoveCartItem, nextAddQuantity, nextRemoveQ
 import { addWishlistItem, removeWishlistItem } from "../../utils/supabaseWishlist"
 import { FaHeart, FaRegHeart } from "react-icons/fa"
 import { useDispatch, useSelector } from "react-redux"
+import { toast } from "react-toastify"
 import { addWishlist, removeWishlist } from "../../context/WishlistSlice"
 import { addCart, removeCart } from "../../context/CartSlice"
 import {
@@ -327,6 +328,11 @@ const ProductDetail = () => {
     const displayStock = activeVariant ? Number(activeVariant.stock) || 0 : (product ? Number(product.stock) || 0 : 0)
     const isOutOfStock = displayStock <= 0
 
+    // --- Cart derivations ---
+    const currentCartCompoundId = activeVariant ? `${product?.id || id}_${activeVariant.id}` : (product?.id || id)
+    const currentCartItem = cartItems.find((item) => String(item.compound_id || item.id) === String(currentCartCompoundId))
+    const inCartQty = currentCartItem ? (currentCartItem.quantity || 0) : 0
+
     // --- Mobile-only derivations (null-safe; desktop ignores these) ---
     const cartCount = cartItems.reduce((acc, item) => acc + (item.quantity || 0), 0)
     const stockNum = displayStock
@@ -405,9 +411,16 @@ const ProductDetail = () => {
             : product
         const compoundId = activeVariant ? `${product.id}_${activeVariant.id}` : product.id
         const existingVariantItem = cartItems.find((item) => String(item.compound_id || item.id) === String(compoundId))
-        const qty = (existingVariantItem ? existingVariantItem.quantity : 0) + quantity
-        dispatch(addCart({ ...cartPayload, id: compoundId, compound_id: compoundId, qtyToAdd: quantity }))
+        const addedQty = quantity
+        const qty = (existingVariantItem ? existingVariantItem.quantity : 0) + addedQty
+        dispatch(addCart({ ...cartPayload, id: compoundId, compound_id: compoundId, qtyToAdd: addedQty }))
         upsertCartItem(user.uid, cartPayload, qty, activeVariant?.id || null)
+
+        // Reset PDP quantity selector back to 1
+        setQuantity(1)
+
+        // Feedback toast notification
+        toast.success(`Added ${addedQty} item${addedQty > 1 ? "s" : ""} to cart`)
     }
 
     const handleSelectImage = (i) => {
@@ -664,7 +677,20 @@ const ProductDetail = () => {
                                     </div>
 
                                     {reviews.length === 0 ? (
-                                        <p style={{ fontWeight: 400, fontSize: "14px", color: "var(--color-muted)" }}>No reviews yet.</p>
+                                        <div
+                                            className="flex flex-col items-center justify-center text-center"
+                                            style={{
+                                                background: "var(--color-surface-muted)",
+                                                borderRadius: "12px",
+                                                padding: "32px 16px",
+                                                border: "1px dashed var(--color-border-strong)",
+                                                gap: "6px"
+                                            }}
+                                        >
+                                            <Star size={24} style={{ color: "var(--color-primary)", marginBottom: "4px" }} />
+                                            <p style={{ fontWeight: 600, fontSize: "15px", color: "var(--color-ink)" }}>No reviews yet</p>
+                                            <p style={{ fontWeight: 400, fontSize: "13px", color: "var(--color-muted)" }}>Have you purchased this product? Share your thoughts!</p>
+                                        </div>
                                     ) : (
                                         reviews.map((review, i) => {
                                             const initials = getInitials(review.userName)
@@ -782,6 +808,7 @@ const ProductDetail = () => {
                                                 const qty = nextAddQuantity(cartItems, currentCartCompoundId)
                                                 dispatch(addCart({ ...cartPayload, id: currentCartCompoundId, compound_id: currentCartCompoundId, qtyToAdd: 1 }))
                                                 upsertCartItem(user.uid, cartPayload, qty, activeVariant?.id || null)
+                                                toast.success("Added to cart")
                                             }}
                                             className="flex items-center justify-center flex-shrink-0"
                                             style={{ width: "134.8px", height: "48px", border: "1px solid var(--color-ink)", borderRadius: "9999px", fontWeight: 700, fontSize: "16px", color: "var(--color-ink)", background: "transparent" }}
@@ -892,13 +919,34 @@ const ProductDetail = () => {
                                         <h1 style={{ fontWeight: 600, fontSize: "32px", color: "var(--color-ink)", letterSpacing: "-0.8px", lineHeight: "40px" }}>
                                             {dName}
                                         </h1>
-                                        <div className="flex items-center" style={{ gap: "16px" }}>
-                                            <span style={{ fontWeight: 700, fontSize: "14px", color: "var(--color-ink)" }}>{avgRating.toFixed(1)}</span>
-                                            <DStars rating={avgRating} size={15} />
-                                            <span style={{ fontWeight: 400, fontSize: "14px", color: "var(--color-body)" }}>
-                                                ({reviewCount.toLocaleString("en-IN")} {reviewCount === 1 ? "Review" : "Reviews"})
-                                            </span>
-                                        </div>
+                                        {reviewCount > 0 ? (
+                                            <div
+                                                className="flex items-center cursor-pointer hover:opacity-80 transition-opacity"
+                                                style={{ gap: "12px" }}
+                                                onClick={() => document.getElementById("customer-reviews-section")?.scrollIntoView({ behavior: "smooth" })}
+                                            >
+                                                <span style={{ fontWeight: 700, fontSize: "14px", color: "var(--color-ink)" }}>{avgRating.toFixed(1)}</span>
+                                                <DStars rating={avgRating} size={15} />
+                                                <span style={{ fontWeight: 400, fontSize: "14px", color: "var(--color-body)" }}>
+                                                    ({reviewCount.toLocaleString("en-IN")} {reviewCount === 1 ? "Review" : "Reviews"})
+                                                </span>
+                                            </div>
+                                        ) : (
+                                            <div
+                                                className="flex items-center cursor-pointer group transition-opacity"
+                                                style={{ gap: "8px" }}
+                                                onClick={() => document.getElementById("customer-reviews-section")?.scrollIntoView({ behavior: "smooth" })}
+                                            >
+                                                <span style={{ fontWeight: 500, fontSize: "14px", color: "var(--color-muted)" }}>No reviews yet</span>
+                                                <span style={{ color: "var(--color-muted)" }}>·</span>
+                                                <span
+                                                    className="group-hover:underline"
+                                                    style={{ fontWeight: 600, fontSize: "14px", color: "var(--color-primary)" }}
+                                                >
+                                                    Be the first to review
+                                                </span>
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* Price block */}
@@ -973,31 +1021,48 @@ const ProductDetail = () => {
                                     )}
 
                                     {/* Quantity + Actions */}
-                                    <div className="flex flex-col" style={{ gap: "24px" }}>
-                                        <div className="flex flex-col" style={{ gap: "8px" }}>
-                                            <span style={{ fontWeight: 600, fontSize: "14px", color: "var(--color-body)" }}>Quantity</span>
-                                            <div
-                                                className="flex items-center"
-                                                style={{ background: "var(--color-background)", border: "1px solid var(--color-muted)", borderRadius: "12px", width: "146px", height: "48px", padding: "0 8px" }}
-                                            >
-                                                <button
-                                                    onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                                                    className="flex items-center justify-center"
-                                                    style={{ width: "40px", height: "40px", borderRadius: "8px" }}
-                                                    aria-label="Decrease quantity"
+                                    <div className="flex flex-col" style={{ gap: "20px" }}>
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex flex-col" style={{ gap: "8px" }}>
+                                                <span style={{ fontWeight: 600, fontSize: "14px", color: "var(--color-body)" }}>Quantity</span>
+                                                <div
+                                                    className="flex items-center"
+                                                    style={{ background: "var(--color-background)", border: "1px solid var(--color-muted)", borderRadius: "12px", width: "146px", height: "48px", padding: "0 8px" }}
                                                 >
-                                                    <Minus size={16} style={{ color: "var(--color-ink)" }} />
-                                                </button>
-                                                <span style={{ fontWeight: 700, fontSize: "16px", color: "var(--color-ink)", width: "48px", textAlign: "center" }}>{quantity}</span>
-                                                <button
-                                                    onClick={() => setQuantity((q) => (stockNum ? Math.min(stockNum, q + 1) : q + 1))}
-                                                    className="flex items-center justify-center"
-                                                    style={{ width: "40px", height: "40px", borderRadius: "8px" }}
-                                                    aria-label="Increase quantity"
-                                                >
-                                                    <Plus size={16} style={{ color: "var(--color-ink)" }} />
-                                                </button>
+                                                    <button
+                                                        onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                                                        className="flex items-center justify-center"
+                                                        style={{ width: "40px", height: "40px", borderRadius: "8px" }}
+                                                        aria-label="Decrease quantity"
+                                                    >
+                                                        <Minus size={16} style={{ color: "var(--color-ink)" }} />
+                                                    </button>
+                                                    <span style={{ fontWeight: 700, fontSize: "16px", color: "var(--color-ink)", width: "48px", textAlign: "center" }}>{quantity}</span>
+                                                    <button
+                                                        onClick={() => setQuantity((q) => (stockNum ? Math.min(stockNum, q + 1) : q + 1))}
+                                                        className="flex items-center justify-center"
+                                                        style={{ width: "40px", height: "40px", borderRadius: "8px" }}
+                                                        aria-label="Increase quantity"
+                                                    >
+                                                        <Plus size={16} style={{ color: "var(--color-ink)" }} />
+                                                    </button>
+                                                </div>
                                             </div>
+
+                                            {inCartQty > 0 && (
+                                                <div
+                                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold self-end"
+                                                    style={{
+                                                        background: "color-mix(in srgb, var(--color-primary) 12%, transparent)",
+                                                        color: "var(--color-primary)",
+                                                        border: "1px solid color-mix(in srgb, var(--color-primary) 25%, transparent)",
+                                                        marginBottom: "4px"
+                                                    }}
+                                                >
+                                                    <Check size={14} className="stroke-[2.5]" />
+                                                    <span>{inCartQty} in your cart</span>
+                                                </div>
+                                            )}
                                         </div>
 
                                         <div className="flex items-center" style={{ gap: "16px" }}>
@@ -1142,96 +1207,125 @@ const ProductDetail = () => {
                             </div>
 
                             {/* SECTION 4 — CUSTOMER REVIEWS */}
-                            <div style={{ borderTop: "1px solid var(--color-border-strong)", paddingTop: "72px", marginTop: "72px", display: "flex", flexDirection: "column", gap: "48px" }}>
+                            <div id="customer-reviews-section" style={{ borderTop: "1px solid var(--color-border-strong)", paddingTop: "72px", marginTop: "72px", display: "flex", flexDirection: "column", gap: "48px" }}>
                                 <div className="flex items-center justify-between">
                                     <h2 style={{ fontWeight: 600, fontSize: "32px", color: "var(--color-ink)" }}>Customer Reviews</h2>
-                                    <div className="flex items-center" style={{ gap: "8px" }}>
-                                        <span style={{ fontWeight: 400, fontSize: "16px", color: "var(--color-body)" }}>Sort by:</span>
-                                        <select
-                                            value={reviewSortOrder}
-                                            onChange={(e) => setReviewSortOrder(e.target.value)}
-                                            style={{ background: "var(--color-background)", border: "1px solid var(--color-muted)", borderRadius: "8px", padding: "8px 16px", fontSize: "14px", color: "var(--color-ink)" }}
-                                        >
-                                            <option value="recent">Most Recent</option>
-                                            <option value="highest">Highest Rated</option>
-                                            <option value="lowest">Lowest Rated</option>
-                                        </select>
-                                    </div>
+                                    {reviewCount > 0 && (
+                                        <div className="flex items-center" style={{ gap: "8px" }}>
+                                            <span style={{ fontWeight: 400, fontSize: "16px", color: "var(--color-body)" }}>Sort by:</span>
+                                            <select
+                                                value={reviewSortOrder}
+                                                onChange={(e) => setReviewSortOrder(e.target.value)}
+                                                style={{ background: "var(--color-background)", border: "1px solid var(--color-muted)", borderRadius: "8px", padding: "8px 16px", fontSize: "14px", color: "var(--color-ink)" }}
+                                            >
+                                                <option value="recent">Most Recent</option>
+                                                <option value="highest">Highest Rated</option>
+                                                <option value="lowest">Lowest Rated</option>
+                                            </select>
+                                        </div>
+                                    )}
                                 </div>
 
-                                <div className="flex items-start" style={{ gap: "48px" }}>
-                                    {/* Rating Summary */}
-                                    <div className="flex flex-col flex-shrink-0" style={{ width: "350px", background: "var(--color-surface-muted)", borderRadius: "12px", padding: "32px", gap: "32px" }}>
-                                        <div className="flex flex-col items-center" style={{ gap: "8px" }}>
-                                            <span style={{ fontWeight: 700, fontSize: "56px", color: "var(--color-ink)", lineHeight: 1 }}>{avgRating.toFixed(1)}</span>
-                                            <DStars rating={avgRating} size={20} />
-                                            <span style={{ fontWeight: 400, fontSize: "16px", color: "var(--color-body)" }}>
-                                                Total {reviewCount.toLocaleString("en-IN")} reviews
-                                            </span>
+                                {reviewCount === 0 ? (
+                                    <div
+                                        className="flex flex-col items-center justify-center text-center w-full"
+                                        style={{
+                                            background: "var(--color-surface-muted)",
+                                            borderRadius: "16px",
+                                            padding: "56px 24px",
+                                            border: "1px dashed var(--color-border-strong)",
+                                            gap: "12px"
+                                        }}
+                                    >
+                                        <div
+                                            className="flex items-center justify-center"
+                                            style={{
+                                                width: "56px",
+                                                height: "56px",
+                                                borderRadius: "50%",
+                                                background: "color-mix(in srgb, var(--color-primary) 12%, transparent)",
+                                                color: "var(--color-primary)",
+                                                marginBottom: "4px"
+                                            }}
+                                        >
+                                            <Star size={26} strokeWidth={2} />
                                         </div>
-                                        <div className="flex flex-col" style={{ gap: "8px" }}>
-                                            {[5, 4, 3, 2, 1].map((star) => {
-                                                const count = ratingStats[star] || 0
-                                                const pct = reviewCount > 0 ? (count / reviewCount) * 100 : 0
-                                                return (
-                                                    <div key={star} className="flex items-center" style={{ gap: "8px" }}>
-                                                        <span style={{ fontSize: "16px", color: "var(--color-ink)", width: "12px" }}>{star}</span>
-                                                        <div className="flex-1 overflow-hidden" style={{ height: "8px", background: "var(--color-border)", borderRadius: "9999px" }}>
-                                                            <div style={{ height: "100%", width: `${pct}%`, background: "var(--color-primary)", borderRadius: "9999px" }} />
-                                                        </div>
-                                                        <span style={{ fontWeight: 400, fontSize: "16px", color: "var(--color-ink)", width: "24px", textAlign: "right" }}>{count}</span>
-                                                    </div>
-                                                )
-                                            })}
-                                        </div>
+                                        <h3 style={{ fontWeight: 600, fontSize: "20px", color: "var(--color-ink)" }}>
+                                            No reviews yet
+                                        </h3>
+                                        <p style={{ fontWeight: 400, fontSize: "15px", color: "var(--color-body)", maxWidth: "440px", lineHeight: "22px" }}>
+                                            Have you purchased or tried this product? Be the first to share your thoughts and help other shoppers make their choice!
+                                        </p>
                                     </div>
-
-                                    {/* Review cards */}
-                                    <div className="flex flex-col flex-1" style={{ gap: "32px" }}>
-                                        {sortedReviews.length === 0 ? (
-                                            <p style={{ fontWeight: 400, fontSize: "16px", color: "var(--color-body)" }}>No reviews yet. Be the first to review this product.</p>
-                                        ) : (
-                                            <>
-                                                {displayedReviews.map((review, i) => {
-                                                    const initials = review.userInitials || getInitials(review.userName)
-                                                    const avatarBg = review.avatarColor || AVATAR_COLORS[i % AVATAR_COLORS.length]
+                                ) : (
+                                    <div className="flex items-start" style={{ gap: "48px" }}>
+                                        {/* Rating Summary */}
+                                        <div className="flex flex-col flex-shrink-0" style={{ width: "350px", background: "var(--color-surface-muted)", borderRadius: "12px", padding: "32px", gap: "32px" }}>
+                                            <div className="flex flex-col items-center" style={{ gap: "8px" }}>
+                                                <span style={{ fontWeight: 700, fontSize: "56px", color: "var(--color-ink)", lineHeight: 1 }}>{avgRating.toFixed(1)}</span>
+                                                <DStars rating={avgRating} size={20} />
+                                                <span style={{ fontWeight: 400, fontSize: "16px", color: "var(--color-body)" }}>
+                                                    Total {reviewCount.toLocaleString("en-IN")} reviews
+                                                </span>
+                                            </div>
+                                            <div className="flex flex-col" style={{ gap: "8px" }}>
+                                                {[5, 4, 3, 2, 1].map((star) => {
+                                                    const count = ratingStats[star] || 0
+                                                    const pct = reviewCount > 0 ? (count / reviewCount) * 100 : 0
                                                     return (
-                                                        <div key={review.id} style={{ borderBottom: "1px solid var(--color-border-strong)", paddingBottom: "32px" }}>
-                                                            <div className="flex items-center" style={{ gap: "16px" }}>
-                                                                <div
-                                                                    className="flex items-center justify-center flex-shrink-0"
-                                                                    style={{ width: "48px", height: "48px", borderRadius: "9999px", background: avatarBg, fontWeight: 700, fontSize: "16px", color: "var(--color-ink)" }}
-                                                                >
-                                                                    {initials}
-                                                                </div>
-                                                                <div className="flex flex-col" style={{ gap: "4px" }}>
-                                                                    <span style={{ fontWeight: 400, fontSize: "16px", color: "var(--color-ink)" }}>{review.userName || "Anonymous"}</span>
-                                                                    <div className="flex items-center" style={{ gap: "12px" }}>
-                                                                        <DStars rating={Number(review.rating) || 0} size={15} />
-                                                                        <span style={{ fontWeight: 400, fontSize: "16px", color: "var(--color-body)" }}>{formatReviewDate(review.createdAt)}</span>
-                                                                    </div>
-                                                                </div>
+                                                        <div key={star} className="flex items-center" style={{ gap: "8px" }}>
+                                                            <span style={{ fontSize: "16px", color: "var(--color-ink)", width: "12px" }}>{star}</span>
+                                                            <div className="flex-1 overflow-hidden" style={{ height: "8px", background: "var(--color-border)", borderRadius: "9999px" }}>
+                                                                <div style={{ height: "100%", width: `${pct}%`, background: "var(--color-primary)", borderRadius: "9999px" }} />
                                                             </div>
-                                                            {review.title && <h4 style={{ fontWeight: 600, fontSize: "20px", color: "var(--color-ink)", paddingTop: "8px" }}>{review.title}</h4>}
-                                                            <p style={{ fontWeight: 400, fontSize: "16px", lineHeight: "24px", color: "var(--color-body)", paddingTop: review.title ? "4px" : "8px" }}>
-                                                                {review.body || review.comment}
-                                                            </p>
+                                                            <span style={{ fontWeight: 400, fontSize: "16px", color: "var(--color-ink)", width: "24px", textAlign: "right" }}>{count}</span>
                                                         </div>
                                                     )
                                                 })}
-                                                {sortedReviews.length > 3 && (
-                                                    <button
-                                                        onClick={() => setShowAllReviews((v) => !v)}
-                                                        className="w-full"
-                                                        style={{ height: "60px", border: "2px solid var(--color-ink)", borderRadius: "12px", fontWeight: 700, fontSize: "16px", color: "var(--color-ink)" }}
-                                                    >
-                                                        {showAllReviews ? "Show Less" : "View All Reviews"}
-                                                    </button>
-                                                )}
-                                            </>
-                                        )}
+                                            </div>
+                                        </div>
+
+                                        {/* Review cards */}
+                                        <div className="flex flex-col flex-1" style={{ gap: "32px" }}>
+                                            {displayedReviews.map((review, i) => {
+                                                const initials = review.userInitials || getInitials(review.userName)
+                                                const avatarBg = review.avatarColor || AVATAR_COLORS[i % AVATAR_COLORS.length]
+                                                return (
+                                                    <div key={review.id} style={{ borderBottom: "1px solid var(--color-border-strong)", paddingBottom: "32px" }}>
+                                                        <div className="flex items-center" style={{ gap: "16px" }}>
+                                                            <div
+                                                                className="flex items-center justify-center flex-shrink-0"
+                                                                style={{ width: "48px", height: "48px", borderRadius: "9999px", background: avatarBg, fontWeight: 700, fontSize: "16px", color: "var(--color-ink)" }}
+                                                            >
+                                                                {initials}
+                                                            </div>
+                                                            <div className="flex flex-col" style={{ gap: "4px" }}>
+                                                                <span style={{ fontWeight: 400, fontSize: "16px", color: "var(--color-ink)" }}>{review.userName || "Anonymous"}</span>
+                                                                <div className="flex items-center" style={{ gap: "12px" }}>
+                                                                    <DStars rating={Number(review.rating) || 0} size={15} />
+                                                                    <span style={{ fontWeight: 400, fontSize: "16px", color: "var(--color-body)" }}>{formatReviewDate(review.createdAt)}</span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        {review.title && <h4 style={{ fontWeight: 600, fontSize: "20px", color: "var(--color-ink)", paddingTop: "8px" }}>{review.title}</h4>}
+                                                        <p style={{ fontWeight: 400, fontSize: "16px", lineHeight: "24px", color: "var(--color-body)", paddingTop: review.title ? "4px" : "8px" }}>
+                                                            {review.body || review.comment}
+                                                        </p>
+                                                    </div>
+                                                )
+                                            })}
+                                            {sortedReviews.length > 3 && (
+                                                <button
+                                                    onClick={() => setShowAllReviews((v) => !v)}
+                                                    className="w-full"
+                                                    style={{ height: "60px", border: "2px solid var(--color-ink)", borderRadius: "12px", fontWeight: 700, fontSize: "16px", color: "var(--color-ink)" }}
+                                                >
+                                                    {showAllReviews ? "Show Less" : "View All Reviews"}
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
-                                </div>
+                                )}
                             </div>
 
                             {/* SECTION 5 — RELATED PRODUCTS */}

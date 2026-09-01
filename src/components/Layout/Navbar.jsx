@@ -119,6 +119,17 @@ const Navbar = () => {
     () => cartItems.reduce((acc, item) => acc + item.quantity, 0),
     [cartItems]
   );
+  const [cartBounced, setCartBounced] = useState(false);
+  const prevCountRef = useRef(totalCount);
+
+  useEffect(() => {
+    if (totalCount > prevCountRef.current) {
+      setCartBounced(true);
+      const t = setTimeout(() => setCartBounced(false), 600);
+      return () => clearTimeout(t);
+    }
+    prevCountRef.current = totalCount;
+  }, [totalCount]);
 
 
   // Click outside to close menus
@@ -308,7 +319,7 @@ const Navbar = () => {
                     >
                       <FaShoppingCart size={20} />
                       {totalCount > 0 && (
-                        <span className="absolute -top-2 -right-2 bg-surface-inverse text-inverse text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
+                        <span className={`absolute -top-2 -right-2 bg-surface-inverse text-inverse text-[10px] rounded-full w-4 h-4 flex items-center justify-center font-bold transition-all duration-300 ${cartBounced ? "scale-125 ring-2 ring-primary" : "scale-100"}`}>
                           {totalCount}
                         </span>
                       )}
@@ -393,7 +404,7 @@ const Navbar = () => {
                     >
                       <FaShoppingCart size={18} />
                       {totalCount > 0 && (
-                        <span className="absolute top-1 right-1 bg-surface-inverse text-inverse text-[9px] rounded-full w-4 h-4 flex items-center justify-center">
+                        <span className={`absolute top-1 right-1 bg-surface-inverse text-inverse text-[9px] rounded-full w-4 h-4 flex items-center justify-center font-bold transition-all duration-300 ${cartBounced ? "scale-125 ring-2 ring-primary" : "scale-100"}`}>
                           {totalCount}
                         </span>
                       )}

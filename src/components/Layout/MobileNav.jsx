@@ -87,6 +87,18 @@ const MobileNav = () => {
   const cartCount = cartItems.reduce((acc, i) => acc + (i.quantity || 0), 0);
   const wishlistCount = wishlistItems.length;
 
+  const [cartBounced, setCartBounced] = useState(false);
+  const prevCartCountRef = useRef(cartCount);
+
+  useEffect(() => {
+    if (cartCount > prevCartCountRef.current) {
+      setCartBounced(true);
+      const t = setTimeout(() => setCartBounced(false), 600);
+      return () => clearTimeout(t);
+    }
+    prevCartCountRef.current = cartCount;
+  }, [cartCount]);
+
   // Close the dropdown when navigating, clicking outside, or pressing Escape.
   useEffect(() => setMenuOpen(false), [location.pathname]);
 
@@ -310,6 +322,7 @@ const MobileNav = () => {
                 />
                 {dot && (
                   <span
+                    className={`transition-all duration-300 ${cartBounced ? "scale-150 ring-2 ring-primary/40" : "scale-100"}`}
                     style={{
                       position: "absolute",
                       top: "-3px",
